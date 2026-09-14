@@ -65,10 +65,14 @@ struct CustomTabBar: View {
             }
             .onEnded { value in
                 let target = tab(at: value.location) ?? draggedTab
-                draggedTab = nil
                 isDragging = false
-                if let target {
-                    withAnimation(.easeInOut(duration: 0.2)) { selectedTab = target }
+                // Clear the drag highlight and commit the selection in a single
+                // animated transaction. Doing them separately would briefly leave
+                // draggedTab == nil while selectedTab is still the old tab, which
+                // snaps the previous tab's circle to filled for one frame (a flash).
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if let target { selectedTab = target }
+                    draggedTab = nil
                 }
             }
     }

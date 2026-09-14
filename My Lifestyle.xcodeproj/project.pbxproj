@@ -6,6 +6,12 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3C4A733F3057C2D9007FB13E /* Amplify in Frameworks */ = {isa = PBXBuildFile; productRef = 3C4A733E3057C2D9007FB13E /* Amplify */; };
+		3C4A73413057C2E0007FB13E /* AWSCognitoAuthPlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 3C4A73403057C2E0007FB13E /* AWSCognitoAuthPlugin */; };
+		3C4A73433057C2FA007FB13E /* AWSAPIPlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 3C4A73423057C2FA007FB13E /* AWSAPIPlugin */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		3C7CE0B030524E2600765206 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -35,22 +41,15 @@
 			path = "My Lifestyle";
 			sourceTree = "<group>";
 		};
-		3C7CE0B230524E2600765206 /* My LifestyleTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "My LifestyleTests";
-			sourceTree = "<group>";
-		};
-		3C7CE0BC30524E2600765206 /* My LifestyleUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "My LifestyleUITests";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		3C7CE09F30524E2300765206 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				3C4A73433057C2FA007FB13E /* AWSAPIPlugin in Frameworks */,
+				3C4A733F3057C2D9007FB13E /* Amplify in Frameworks */,
+				3C4A73413057C2E0007FB13E /* AWSCognitoAuthPlugin in Frameworks */,
 			);
 		};
 		3C7CE0AC30524E2600765206 /* Frameworks */ = {
@@ -66,12 +65,18 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3C4A733D3057C2D9007FB13E /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		3C7CE09930524E2300765206 = {
 			isa = PBXGroup;
 			children = (
 				3C7CE0A430524E2300765206 /* My Lifestyle */,
-				3C7CE0B230524E2600765206 /* My LifestyleTests */,
-				3C7CE0BC30524E2600765206 /* My LifestyleUITests */,
+				3C4A733D3057C2D9007FB13E /* Frameworks */,
 				3C7CE0A330524E2300765206 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -103,6 +108,11 @@
 				3C7CE0A430524E2300765206 /* My Lifestyle */,
 			);
 			name = "My Lifestyle";
+			packageProductDependencies = (
+				3C4A733E3057C2D9007FB13E /* Amplify */,
+				3C4A73403057C2E0007FB13E /* AWSCognitoAuthPlugin */,
+				3C4A73423057C2FA007FB13E /* AWSAPIPlugin */,
+			);
 			productName = "My Lifestyle";
 			productReference = 3C7CE0A230524E2300765206 /* My Lifestyle.app */;
 			productType = "com.apple.product-type.application";
@@ -119,9 +129,6 @@
 			);
 			dependencies = (
 				3C7CE0B130524E2600765206 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				3C7CE0B230524E2600765206 /* My LifestyleTests */,
 			);
 			name = "My LifestyleTests";
 			productName = "My LifestyleTests";
@@ -140,9 +147,6 @@
 			);
 			dependencies = (
 				3C7CE0BB30524E2600765206 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				3C7CE0BC30524E2600765206 /* My LifestyleUITests */,
 			);
 			name = "My LifestyleUITests";
 			productName = "My LifestyleUITests";
@@ -181,6 +185,9 @@
 			);
 			mainGroup = 3C7CE09930524E2300765206;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3CEA3263305779C800416EC1 /* XCRemoteSwiftPackageReference "amplify-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3C7CE0A330524E2300765206 /* Products */;
 			projectDirPath = "";
@@ -369,6 +376,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "My Lifestyle/My Lifestyle.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MGG69T24H6;
@@ -379,6 +387,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -401,6 +410,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "My Lifestyle/My Lifestyle.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MGG69T24H6;
@@ -411,6 +421,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -548,6 +559,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3CEA3263305779C800416EC1 /* XCRemoteSwiftPackageReference "amplify-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aws-amplify/amplify-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.60.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3C4A733E3057C2D9007FB13E /* Amplify */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3CEA3263305779C800416EC1 /* XCRemoteSwiftPackageReference "amplify-swift" */;
+			productName = Amplify;
+		};
+		3C4A73403057C2E0007FB13E /* AWSCognitoAuthPlugin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3CEA3263305779C800416EC1 /* XCRemoteSwiftPackageReference "amplify-swift" */;
+			productName = AWSCognitoAuthPlugin;
+		};
+		3C4A73423057C2FA007FB13E /* AWSAPIPlugin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3CEA3263305779C800416EC1 /* XCRemoteSwiftPackageReference "amplify-swift" */;
+			productName = AWSAPIPlugin;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3C7CE09A30524E2300765206 /* Project object */;
 	validationLevel = 1;
