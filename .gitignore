@@ -3,3 +3,7 @@ node_modules
 .amplify
 amplify_outputs*
 amplifyconfiguration*
+
+# Local secrets (Edamam nutrition API keys)
+NutritionCredentials.swift
+**/NutritionCredentials.swift

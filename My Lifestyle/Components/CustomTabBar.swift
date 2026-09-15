@@ -5,24 +5,24 @@ enum AppTab: String, CaseIterable {
     case diary = "Diary"
     case recipes = "Recipes"
     case pantry = "Pantry"
-    case profile = "Profile"
+    case community = "Community"
 
     var icon: String {
         switch self {
         case .diary: return "book.closed.fill"
         case .recipes: return "fork.knife"
         case .pantry: return "cabinet.fill"
-        case .profile: return "person.fill"
+        case .community: return "person.2.fill"
         }
     }
 
     /// Each tab lights up in its own color when active — matching the Akashic bar.
     var selectedColor: Color {
         switch self {
-        case .diary:   return Color(red: 0.15, green: 0.72, blue: 0.54)
-        case .recipes: return Color(red: 1.0,  green: 0.58, blue: 0.12)
-        case .pantry:  return Color(red: 0.28, green: 0.52, blue: 1.0)
-        case .profile: return Color(red: 0.9,  green: 0.3,  blue: 0.72)
+        case .diary:     return Color(red: 0.15, green: 0.72, blue: 0.54)
+        case .recipes:   return Color(red: 1.0,  green: 0.58, blue: 0.12)
+        case .pantry:    return Color(red: 0.28, green: 0.52, blue: 1.0)
+        case .community: return Color(red: 0.9,  green: 0.3,  blue: 0.72)
         }
     }
 }

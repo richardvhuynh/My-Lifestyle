@@ -19,7 +19,7 @@ struct AuthView: View {
         ZStack(alignment: .top) {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack {
                         Text("Account")

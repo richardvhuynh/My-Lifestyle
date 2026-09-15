@@ -17,6 +17,12 @@ final class PantryStore {
         items.removeAll { $0.id == item.id }
     }
 
+    /// Sets a consumable item's remaining amount to an exact value.
+    func updateAmount(_ item: PantryItem, to amount: Double) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].amount = amount
+    }
+
     /// Applies a completed recipe to the pantry: each ingredient decrements the
     /// matching consumable good by the recipe's required amount (converting
     /// units as needed). Permanent goods and unmatched ingredients are left

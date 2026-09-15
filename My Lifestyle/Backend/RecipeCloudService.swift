@@ -34,10 +34,47 @@ enum RecipeCloudService {
             return !existingNames.contains(recipe.name.lowercased())
         }
 
+        // Seeding stores recipe details only (name, image, ingredients, steps) —
+        // no nutrition. Nutrition is looked up from USDA lazily the first time a
+        // recipe is opened and persisted then, spreading API calls over time.
+        // A single failed create shouldn't abort the whole import.
+        var created = 0
         for recipe in newRecipes {
-            try await create(recipe)
+            do {
+                try await create(recipe)
+                created += 1
+            } catch {
+                continue
+            }
         }
-        return newRecipes.count
+        return created
+    }
+
+    /// Persists nutrition onto an existing recipe via the generated
+    /// `updateRecipe` mutation. Called after a lazy USDA lookup so the values
+    /// become permanently available to every user.
+    static func updateNutrition(cloudId: String, _ info: NutritionInfo) async throws {
+        let document = """
+        mutation UpdateRecipe($input: UpdateRecipeInput!) {
+          updateRecipe(input: $input) {
+            \(recipeFields)
+          }
+        }
+        """
+        let input: [String: Any] = [
+            "id": cloudId,
+            "calories": info.calories,
+            "protein": info.protein,
+            "carbs": info.carbs,
+            "fat": info.fat
+        ]
+        let request = GraphQLRequest<RecipeRecord>(
+            document: document,
+            variables: ["input": input],
+            responseType: RecipeRecord.self,
+            decodePath: "updateRecipe"
+        )
+        _ = try await run(request, isMutation: true)
     }
 
     /// Persists a single recipe via the generated `createRecipe` mutation.

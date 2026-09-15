@@ -5,13 +5,22 @@ import AWSAPIPlugin
 
 @main
 struct My_LifestyleApp: App {
+    /// Shared pantry, created once and injected so every tab and the recipe
+    /// cooking flow operate on the same items.
+    @State private var pantry = PantryStore()
+
     init() {
+        // Roomy on-disk + in-memory HTTP cache so recipe images load instantly
+        // after the first fetch (and across launches).
+        URLCache.shared = URLCache(memoryCapacity: 64 * 1_024 * 1_024,
+                                   diskCapacity: 512 * 1_024 * 1_024)
         Self.configureAmplify()
     }
 
     var body: some Scene {
         WindowGroup {
             MainTabView()
+                .environment(pantry)
         }
     }
 

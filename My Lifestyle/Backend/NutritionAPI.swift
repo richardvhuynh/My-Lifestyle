@@ -97,15 +97,19 @@ enum NutritionAPI {
         var best: (food: USDAFood, score: Double)?
         for food in foods {
             let desc = (food.description ?? "").lowercased()
-            guard desc.contains(term.head) else { continue }
+            // Require every significant word (so "olive oil" doesn't match
+            // "coconut oil", and "chicken breast" needs both words).
+            guard term.words.allSatisfy({ desc.contains($0) }) else { continue }
             guard (food.profile()?.calories ?? 0) > 0 else { continue }
 
             var score = 0.0
             if food.dataType == "Foundation" { score += 5 }
             else if food.dataType == "SR Legacy" { score += 3 }
-            score += Double(term.words.filter { desc.contains($0) }.count) * 2
             if desc.hasPrefix(term.head) { score += 2 }
             if desc.contains("raw") { score += 1 }
+            // Push down processed/derivative forms ("rice crackers", "salmon
+            // nuggets, breaded") in favor of the plain ingredient.
+            if processedKeywords.contains(where: { desc.contains($0) }) { score -= 6 }
             score -= Double(desc.split(separator: " ").count) * 0.15
 
             if best == nil || score > best!.score {
@@ -122,6 +126,14 @@ enum NutritionAPI {
         let words: [String]     // significant words for scoring
         let head: String        // primary food word that must appear in a match
     }
+
+    /// Processed/derivative descriptors that indicate a food isn't the plain
+    /// ingredient we want.
+    private static let processedKeywords: Set<String> = [
+        "nugget", "breaded", "cracker", "chips", "snack", "cake", "candy",
+        "bar", "sauce", "soup", "powder", "drink", "fried", "juice", "flavored",
+        "dried", "dehydrated", "concentrate", "roasted", "canned"
+    ]
 
     /// A few common recipe→USDA vocabulary differences.
     private static let synonyms: [String: String] = [

@@ -12,6 +12,29 @@ const schema = a.schema({
       content: a.string(),
     })
     .authorization((allow) => [allow.guest()]),
+
+  // A shared, global recipe in the exploration catalog. Every user reads the
+  // same records; imports from TheMealDB seed this table. `ingredients` and
+  // `steps` are stored as JSON-encoded strings so the client can round-trip
+  // its structured Swift models without a nested GraphQL selection set.
+  Recipe: a
+    .model({
+      name: a.string().required(),
+      imageUrl: a.string(),
+      // Browse axes from TheMealDB: food category (e.g. "Seafood") and
+      // cuisine/area (e.g. "Italian").
+      category: a.string(),
+      area: a.string(),
+      calories: a.integer(),
+      protein: a.float(),
+      carbs: a.float(),
+      fat: a.float(),
+      ingredients: a.string(),
+      steps: a.string(),
+      // TheMealDB meal id, used to de-duplicate imports.
+      sourceId: a.string(),
+    })
+    .authorization((allow) => [allow.guest()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;

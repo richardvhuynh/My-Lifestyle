@@ -16,13 +16,23 @@ struct NutritionInfo: Hashable {
 /// These are rough estimates for exploration, not verified nutrition facts.
 enum NutritionEstimator {
 
+    /// Estimates how many servings a recipe yields from the total weight of its
+    /// ingredients (~400 g of food per serving), clamped to 1…12. TheMealDB has
+    /// no serving field, so this adapts to the dish size — a sandwich comes out
+    /// as 1, a big stew as several — instead of a fixed guess.
+    static func estimatedServings(for ingredients: [RecipeIngredient]) -> Int {
+        let totalGrams = ingredients.reduce(0.0) { $0 + grams(for: $1) }
+        let servings = (totalGrams / 400).rounded()
+        return min(12, max(1, Int(servings)))
+    }
+
     static func estimate(for ingredients: [RecipeIngredient]) -> NutritionInfo {
         var calories = 0.0, protein = 0.0, carbs = 0.0, fat = 0.0
 
         for ingredient in ingredients {
-            let grams = gramsEstimate(for: ingredient)
-            let profile = profile(for: ingredient.name)
-            let factor = grams / 100
+            let gramsAmount = grams(for: ingredient)
+            let profile = localProfile(for: ingredient.name)
+            let factor = gramsAmount / 100
             calories += profile.calories * factor
             protein += profile.protein * factor
             carbs += profile.carbs * factor
@@ -38,20 +48,34 @@ enum NutritionEstimator {
     }
 
     /// Converts an ingredient's amount into grams. Mass converts directly,
-    /// volume is treated as ~1 g/ml, and counts use a per-item weight.
-    private static func gramsEstimate(for ingredient: RecipeIngredient) -> Double {
+    /// volume is treated as ~1 g/ml, and counts use a per-item weight. Shared
+    /// with the USDA-backed `NutritionAPI` so both scale nutrients the same way.
+    static func grams(for ingredient: RecipeIngredient) -> Double {
+        let name = ingredient.name.lowercased()
         switch ingredient.unit.dimension {
-        case .mass, .volume:
+        case .mass:
             return ingredient.amount * ingredient.unit.perBaseUnit
+        case .volume:
+            let grams = ingredient.amount * ingredient.unit.perBaseUnit
+            // Deep-frying oil: only a little is absorbed, the rest is a cooking
+            // medium that's discarded. Cap large oil/fat volumes so "2 cups
+            // vegetable oil" doesn't add thousands of calories.
+            if isFryingFat(name), grams > 45 { return 30 }
+            return grams
         case .count:
-            return ingredient.amount * perItemGrams(for: ingredient.name)
+            return ingredient.amount * perItemGrams(for: name)
         }
+    }
+
+    private static func isFryingFat(_ name: String) -> Bool {
+        ["oil", "shortening", "lard", "ghee", "tallow"].contains { name.contains($0) }
     }
 
     // MARK: - Lookup tables
 
-    /// Per-100g nutrition: (kcal, protein g, carbs g, fat g).
-    private static func profile(for name: String) -> NutritionProfile {
+    /// Local, offline per-100g nutrition profile looked up by keyword, used as
+    /// the fallback when a USDA lookup is unavailable.
+    static func localProfile(for name: String) -> NutritionProfile {
         let n = name.lowercased()
         for (keywords, profile) in table {
             if keywords.contains(where: { n.contains($0) }) { return profile }
@@ -108,21 +132,31 @@ enum NutritionEstimator {
         (["wine", "beer"], .init(calories: 83, protein: 0.1, carbs: 2.6, fat: 0))
     ]
 
-    /// Approximate weight of one whole item, by keyword.
+    /// Approximate weight of one whole item, by keyword. Expects `name` already
+    /// lowercased.
     private static func perItemGrams(for name: String) -> Double {
-        let n = name.lowercased()
+        // Seeds, spices, and garnishes — frequently listed with no real
+        // quantity (e.g. "Garnish", "To serve"), so keep their weight tiny.
+        let small = ["sesame", "seed", "salt", "peppercorn", "spice", "powder",
+                     "cinnamon", "cumin", "paprika", "nutmeg", "oregano",
+                     "thyme", "herb", "garnish", "zest"]
+        if small.contains(where: { name.contains($0) }) { return 5 }
+
         let weights: [(String, Double)] = [
-            ("egg", 50), ("banana", 120), ("apple", 180), ("onion", 110),
-            ("garlic", 5), ("clove", 5), ("potato", 170), ("tomato", 120),
-            ("carrot", 60), ("lemon", 60), ("lime", 60), ("pepper", 120),
-            ("chicken", 170), ("slice", 25)
+            ("garlic", 5), ("clove", 5), ("egg", 50), ("banana", 120),
+            ("apple", 180), ("shallot", 40), ("onion", 110), ("potato", 170),
+            ("tomato", 120), ("carrot", 60), ("lemon", 60), ("lime", 60),
+            ("scallion", 15), ("spring onion", 15), ("chicken", 170), ("slice", 25)
         ]
-        for (keyword, grams) in weights where n.contains(keyword) { return grams }
-        return 100
+        for (keyword, grams) in weights where name.contains(keyword) { return grams }
+        if name.contains("bell pepper") || name.contains("capsicum") { return 120 }
+        // Unknown countable: assume a modest amount, not a full 100 g.
+        return 25
     }
 }
 
-private struct NutritionProfile {
+/// Per-100g nutrition: kcal, protein g, carbs g, fat g.
+struct NutritionProfile {
     var calories: Double
     var protein: Double
     var carbs: Double

@@ -3,13 +3,21 @@ import SwiftUI
 struct ProfileView: View {
     @State private var session = SessionModel()
     @State private var showingAuth = false
+    @AppStorage("appearance") private var appearanceRaw = AppAppearance.system.rawValue
+
+    private var appearanceBinding: Binding<AppAppearance> {
+        Binding(
+            get: { AppAppearance(rawValue: appearanceRaw) ?? .system },
+            set: { appearanceRaw = $0.rawValue }
+        )
+    }
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .top) {
                 Theme.background.ignoresSafeArea()
 
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 20) {
                         AppHeader(title: "Profile")
 
@@ -34,6 +42,16 @@ struct ProfileView: View {
                             Spacer()
                         }
                         .card(padding: 18)
+
+                        // Appearance
+                        SectionBox(title: "Appearance") {
+                            Picker("Appearance", selection: appearanceBinding) {
+                                ForEach(AppAppearance.allCases) { option in
+                                    Text(option.label).tag(option)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
 
                         // Goals
                         SectionBox(title: "Goals") {

@@ -2,7 +2,8 @@ import SwiftUI
 import PhotosUI
 
 struct PantryView: View {
-    @State private var pantryItems: [PantryItem] = []
+    @Environment(PantryStore.self) private var pantry
+    private var pantryItems: [PantryItem] { pantry.items }
 
     // Draft state for the "add" form.
     @State private var draftKind: PantryItemKind = .consumable
@@ -12,10 +13,25 @@ struct PantryView: View {
     @State private var draftPhoto: PhotosPickerItem?
     @State private var draftImageData: Data?
 
+    // Editing a consumable's amount via an alert.
+    @State private var editingItem: PantryItem?
+    @State private var editAmountText = ""
+    @FocusState private var fieldFocused: Bool
+
     // Sample recipes to match against — replace with recipes fetched from your Amplify data API
     private let allRecipes: [Recipe] = [
-        Recipe(name: "Chicken & Broccoli Bowl", ingredients: ["Chicken breast", "Broccoli", "Feta cheese", "Olive oil"], steps: [], calories: 509, protein: 42, carbs: 20, fat: 24),
-        Recipe(name: "Oatmeal with Berries", ingredients: ["Oats", "Banana", "Blueberries", "Egg"], steps: [], calories: 434, protein: 18, carbs: 61, fat: 9)
+        Recipe(name: "Chicken & Broccoli Bowl", ingredients: [
+            RecipeIngredient(name: "Chicken breast", amount: 200, unit: .grams),
+            RecipeIngredient(name: "Broccoli", amount: 150, unit: .grams),
+            RecipeIngredient(name: "Feta cheese", amount: 1, unit: .ounces),
+            RecipeIngredient(name: "Olive oil", amount: 1, unit: .tablespoons)
+        ], steps: [], calories: 509, protein: 42, carbs: 20, fat: 24),
+        Recipe(name: "Oatmeal with Berries", ingredients: [
+            RecipeIngredient(name: "Oats", amount: 80, unit: .grams),
+            RecipeIngredient(name: "Banana", amount: 1, unit: .whole),
+            RecipeIngredient(name: "Blueberries", amount: 0.5, unit: .cups),
+            RecipeIngredient(name: "Egg", amount: 1, unit: .whole)
+        ], steps: [], calories: 434, protein: 18, carbs: 61, fat: 9)
     ]
 
     private var permanentItems: [PantryItem] {
@@ -33,7 +49,7 @@ struct PantryView: View {
         let have = Set(pantryItems.map { $0.name.lowercased() })
         return allRecipes
             .map { recipe -> (Recipe, Int) in
-                let matches = recipe.ingredients.filter { have.contains($0.lowercased()) }.count
+                let matches = recipe.ingredients.filter { have.contains($0.name.lowercased()) }.count
                 return (recipe, matches)
             }
             .filter { $0.1 > 0 }
@@ -48,7 +64,7 @@ struct PantryView: View {
         ZStack(alignment: .top) {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
                     AppHeader(title: "Pantry", subtitle: "\(pantryItems.count) items")
 
@@ -72,8 +88,27 @@ struct PantryView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 120)
+                // Tapping empty space dismisses the keyboard so you're never
+                // stuck with it open.
+                .contentShape(Rectangle())
+                .onTapGesture { fieldFocused = false }
+            }
+            .scrollDismissesKeyboard(.immediately)
+        }
+        .alert("Update amount", isPresented: editAmountAlertPresented) {
+            TextField("Amount", text: $editAmountText)
+                .keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) { editingItem = nil }
+            Button("Save") { saveEditedAmount() }
+        } message: {
+            if let editingItem {
+                Text("New amount for \(editingItem.name) (\(editingItem.unit.label))")
             }
         }
+    }
+
+    private var editAmountAlertPresented: Binding<Bool> {
+        Binding(get: { editingItem != nil }, set: { if !$0 { editingItem = nil } })
     }
 
     // MARK: - Add form
@@ -91,6 +126,7 @@ struct PantryView: View {
 
                     TextField("e.g. Chicken breast", text: $draftName)
                         .textFieldStyle(RoundedFieldStyle())
+                        .focused($fieldFocused)
                         .onSubmit(addItem)
                 }
 
@@ -101,6 +137,7 @@ struct PantryView: View {
                         TextField("Amount", text: $draftAmount)
                             .keyboardType(.decimalPad)
                             .textFieldStyle(RoundedFieldStyle())
+                            .focused($fieldFocused)
 
                         unitPicker
                     }
@@ -202,12 +239,20 @@ struct PantryView: View {
             Spacer()
 
             if item.kind == .consumable {
-                Text(item.amountText)
+                Button {
+                    beginEditing(item)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(item.amountText)
+                        Image(systemName: "pencil").font(.system(size: 10))
+                    }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Theme.accentDark)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(Capsule().fill(Theme.accentSoft))
+                }
+                .buttonStyle(.plain)
             }
 
             Button {
@@ -287,7 +332,7 @@ struct PantryView: View {
         )
 
         withAnimation(.easeInOut(duration: 0.2)) {
-            pantryItems.append(item)
+            pantry.add(item)
         }
         resetDraft()
     }
@@ -301,23 +346,30 @@ struct PantryView: View {
 
     private func remove(_ item: PantryItem) {
         withAnimation(.easeInOut(duration: 0.2)) {
-            pantryItems.removeAll { $0.id == item.id }
+            pantry.remove(item)
         }
     }
 
-    /// Applies a completed recipe to the pantry: each used ingredient decrements
-    /// the matching consumable good (converting units as needed). Permanent
-    /// goods are left untouched. Call this when a recipe is marked complete.
-    private func completeRecipe(usage: [(name: String, amount: Double, unit: MeasurementUnit)]) {
-        for used in usage {
-            guard let index = pantryItems.firstIndex(where: {
-                $0.name.lowercased() == used.name.lowercased()
-            }) else { continue }
-            pantryItems[index].consume(used.amount, unit: used.unit)
+    private func beginEditing(_ item: PantryItem) {
+        fieldFocused = false
+        editingItem = item
+        editAmountText = item.amount == item.amount.rounded()
+            ? String(Int(item.amount))
+            : String(item.amount)
+    }
+
+    private func saveEditedAmount() {
+        guard let item = editingItem,
+              let amount = Double(editAmountText.trimmingCharacters(in: .whitespaces)) else {
+            editingItem = nil
+            return
         }
+        pantry.updateAmount(item, to: max(0, amount))
+        editingItem = nil
     }
 }
 
 #Preview {
     PantryView()
+        .environment(PantryStore())
 }

@@ -68,8 +68,11 @@ private struct MealDBMeal: Decodable {
             guard let rawName = value("strIngredient\(index)"),
                   !rawName.isEmpty else { continue }
             let measure = value("strMeasure\(index)") ?? ""
-            let (amount, unit) = MealDBMeal.parseMeasure(measure)
-            ingredients.append(RecipeIngredient(name: rawName.capitalized, amount: amount, unit: unit))
+            let parsed = MealDBMeal.parseMeasure(measure)
+            let resolved = IngredientClassifier.resolve(
+                name: rawName, parsedAmount: parsed.amount, parsedUnit: parsed.unit
+            )
+            ingredients.append(RecipeIngredient(name: rawName.capitalized, amount: resolved.amount, unit: resolved.unit))
         }
 
         let steps = MealDBMeal.parseSteps(value("strInstructions") ?? "")
@@ -77,6 +80,9 @@ private struct MealDBMeal: Decodable {
         return Recipe(
             name: name,
             imageName: value("strMealThumb"),
+            category: value("strCategory"),
+            area: value("strArea"),
+            sourceId: value("idMeal"),
             ingredients: ingredients,
             steps: steps,
             // TheMealDB provides no nutrition data on the free tier.
@@ -92,27 +98,29 @@ private struct MealDBMeal: Decodable {
 
     // MARK: Parsing helpers
 
-    /// Turns a free-text measure like "200g", "1 tbsp", or "1 1/2 cups" into a
-    /// numeric amount and a `MeasurementUnit`, best-effort. Unrecognized or
-    /// empty measures fall back to a single piece.
-    static func parseMeasure(_ measure: String) -> (Double, MeasurementUnit) {
+    /// Parses a free-text measure like "240g large", "1 tbsp", or "1 1/2 cups"
+    /// into a numeric amount and an explicit `MeasurementUnit`. Either can be
+    /// `nil`: no number found, and/or no explicit unit in the text (e.g.
+    /// "Garnish", "1 chopped"). The caller fills gaps from the ingredient type.
+    static func parseMeasure(_ measure: String) -> (amount: Double?, unit: MeasurementUnit?) {
         let trimmed = measure.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return (1, .pieces) }
+        guard !trimmed.isEmpty else { return (nil, nil) }
 
-        // Peel off the leading numeric portion (digits, dots, slashes, spaces,
-        // and vulgar-fraction glyphs) from the trailing unit text.
+        // Peel the leading numeric portion (digits, dots, slashes, spaces, and
+        // vulgar-fraction glyphs) off the front; the rest is the unit + notes.
+        var index = trimmed.startIndex
         var numberPart = ""
-        var inNumber = true
-        for char in trimmed {
-            if inNumber, char.isNumber || char == "." || char == "/" || char == " " || vulgarFractions[char] != nil {
+        while index < trimmed.endIndex {
+            let char = trimmed[index]
+            if char.isNumber || char == "." || char == "/" || char == " " || vulgarFractions[char] != nil {
                 numberPart.append(char)
+                index = trimmed.index(after: index)
             } else {
-                inNumber = false
+                break
             }
         }
 
-        let amount = parseQuantity(from: numberPart) ?? 1
-        return (amount, detectUnit(in: trimmed))
+        return (parseQuantity(from: numberPart), detectUnit(after: trimmed[index...]))
     }
 
     private static let vulgarFractions: [Character: Double] = [
@@ -144,34 +152,122 @@ private struct MealDBMeal: Decodable {
         return matched ? total : nil
     }
 
-    /// Matches unit keywords, checking the more specific tokens first so that,
-    /// e.g., "fl oz" isn't swallowed by "oz" and "kg" isn't swallowed by "g".
-    private static func detectUnit(in measure: String) -> MeasurementUnit {
-        let m = measure.lowercased()
-        if m.contains("fl oz") || m.contains("fluid ounce") { return .fluidOunces }
-        if m.contains("tbsp") || m.contains("tbs") || m.contains("tablespoon") { return .tablespoons }
-        if m.contains("tsp") || m.contains("teaspoon") { return .teaspoons }
-        if m.contains("kg") || m.contains("kilo") { return .kilograms }
-        if m.contains("ml") || m.contains("millilit") { return .milliliters }
-        if m.contains("cup") { return .cups }
-        if m.contains("oz") || m.contains("ounce") { return .ounces }
-        if m.contains("lb") || m.contains("pound") { return .pounds }
-        if m.contains("litre") || m.contains("liter") { return .liters }
-        if m.contains("gram") || m.hasSuffix("g") { return .grams }
-        return .pieces
+    /// Determines the explicit unit from the text following the number. Reads
+    /// the first word (splitting on spaces and slashes, e.g. "g/2oz" → "g") and
+    /// matches known unit tokens. Returns `nil` when the text has no real unit
+    /// ("large", "finely chopped", "Garnish"), so the ingredient type decides.
+    private static func detectUnit(after rest: Substring) -> MeasurementUnit? {
+        let word = rest
+            .split(whereSeparator: { $0 == " " || $0 == "/" })
+            .first
+            .map { $0.lowercased() } ?? ""
+
+        if word.isEmpty { return nil }
+        if word.hasPrefix("kg") || word.hasPrefix("kilo") { return .kilograms }
+        if word == "g" || word.hasPrefix("gram") || word.hasPrefix("gm") { return .grams }
+        if word.hasPrefix("ml") || word.hasPrefix("millilit") { return .milliliters }
+        if word == "l" || word.hasPrefix("litre") || word.hasPrefix("liter") { return .liters }
+        if word.hasPrefix("tbsp") || word.hasPrefix("tbs") || word.hasPrefix("tbl") || word.hasPrefix("tablespoon") { return .tablespoons }
+        if word.hasPrefix("tsp") || word.hasPrefix("teaspoon") { return .teaspoons }
+        if word.hasPrefix("cup") { return .cups }
+        if word.hasPrefix("fl") { return .fluidOunces }
+        if word.hasPrefix("oz") || word.hasPrefix("ounce") { return .ounces }
+        if word.hasPrefix("lb") || word.hasPrefix("pound") { return .pounds }
+        return nil
     }
 
-    /// Splits TheMealDB's instruction blob into ordered steps, one per non-empty
-    /// line.
+    /// Splits TheMealDB's instruction blob into ordered steps.
+    ///
+    /// The text is broken into lines, then each line is split into sentences so
+    /// recipes that pack several actions into one paragraph (chop, heat, sauté…)
+    /// become separate steps. Bare "STEP N" / "1." markers are dropped, and
+    /// trailing non-cooking sections (Serving, Storage, Notes…) are folded into
+    /// a single closing step rather than many fragments.
     private static func parseSteps(_ instructions: String) -> [RecipeStep] {
-        let lines = instructions
+        let normalized = instructions
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-            .components(separatedBy: "\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .replacingOccurrences(of: "\u{200b}", with: "") // zero-width spacers
 
-        let source = lines.isEmpty ? [instructions] : lines
-        return source.enumerated().map { RecipeStep(order: $0.offset + 1, instruction: $0.element) }
+        var steps: [String] = []
+        var notes: [String] = []
+        var inNotes = false
+
+        for rawLine in normalized.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+
+            // A short header line (Serving/Storage/etc.) begins the notes.
+            if !inNotes, isNoteHeader(sentences(in: line).first ?? line) { inNotes = true }
+
+            for sentence in sentences(in: line) {
+                let text = cleanStepText(sentence)
+                guard !text.isEmpty, !isPureMarker(text) else { continue }
+                if inNotes {
+                    notes.append(text)
+                } else {
+                    steps.append(text)
+                }
+            }
+        }
+
+        // Collapse all trailing note sentences into one closing step.
+        if !notes.isEmpty {
+            steps.append(notes.joined(separator: " "))
+        }
+
+        if steps.isEmpty {
+            steps = [instructions.trimmingCharacters(in: .whitespacesAndNewlines)]
+        }
+        return steps.enumerated().map { RecipeStep(order: $0.offset + 1, instruction: $0.element) }
+    }
+
+    /// Splits a line into sentences on `.`/`!`/`?` boundaries (a period between
+    /// digits like "1.5" is left intact since it isn't followed by a space).
+    private static func sentences(in line: String) -> [String] {
+        let sentinel = "\u{0001}"
+        return line
+            .replacingOccurrences(of: "([.!?])\\s+", with: "$1\(sentinel)", options: .regularExpression)
+            .components(separatedBy: sentinel)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    // Ingredient unit/amount inference lives in `IngredientClassifier`.
+
+    /// Joins a paragraph's lines into one string, collapses whitespace, and
+    /// strips a leading "STEP N" / "N." / "N)" marker.
+    private static func cleanStepText(_ chunk: String) -> String {
+        var text = chunk
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+
+        if let range = text.range(of: "^step\\s*\\d+\\s*[:.)-]?\\s*", options: [.regularExpression, .caseInsensitive]) {
+            text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        if let range = text.range(of: "^\\d+\\s*[.)]\\s+", options: .regularExpression) {
+            text = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        return text
+    }
+
+    /// True when the text is only a step marker like "STEP 1", "1.", or "2)".
+    private static func isPureMarker(_ text: String) -> Bool {
+        text.range(of: "^(step\\s*)?\\d+\\s*[:.)-]?$", options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// True when a line looks like a non-cooking section header — a short title
+    /// (≤ 5 words, no ending period) beginning with a storage/serving keyword.
+    private static func isNoteHeader(_ line: String) -> Bool {
+        let l = line.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !l.isEmpty, !l.hasSuffix("."), l.split(separator: " ").count <= 5 else { return false }
+        let keywords = ["preserv", "serving", "to serve", "storage", "storing", "store",
+                        "note", "tip", "make ahead", "freez", "reheat", "nutrition",
+                        "variation", "leftover"]
+        return keywords.contains { l.hasPrefix($0) }
     }
 }

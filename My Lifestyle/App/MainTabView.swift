@@ -2,6 +2,25 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab: AppTab = .diary
+    @State private var showingProfile = false
+    @State private var recipesPath = NavigationPath()
+    @AppStorage("appearance") private var appearanceRaw = AppAppearance.system.rawValue
+
+    private var appearance: AppAppearance {
+        AppAppearance(rawValue: appearanceRaw) ?? .system
+    }
+
+    /// Wraps the tab selection so any tab tap (switching or re-tapping the
+    /// current tab) returns sections with pushed detail views to their root.
+    private var tabSelection: Binding<AppTab> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                recipesPath = NavigationPath()
+                selectedTab = newValue
+            }
+        )
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -13,17 +32,22 @@ struct MainTabView: View {
             // which made them snap in; animating a persistent view's opacity fades
             // every page smoothly and also preserves each tab's state.
             ZStack {
-                page(.diary) { DiaryView() }
-                page(.recipes) { RecipesView() }
+                page(.diary) { DiaryView(onOpenProfile: { showingProfile = true }) }
+                page(.recipes) { RecipesView(path: $recipesPath) }
                 page(.pantry) { PantryView() }
-                page(.profile) { ProfileView() }
+                page(.community) { CommunityView() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.28), value: selectedTab)
 
-            CustomTabBar(selectedTab: $selectedTab)
+            CustomTabBar(selectedTab: tabSelection)
         }
         .ignoresSafeArea(.keyboard)
+        .preferredColorScheme(appearance.colorScheme)
+        // Profile is reached from the Diary header now that its tab slot is Community.
+        .sheet(isPresented: $showingProfile) {
+            ProfileView()
+        }
     }
 
     /// Wraps a page so only the selected one is visible and interactive.
@@ -39,4 +63,5 @@ struct MainTabView: View {
 
 #Preview {
     MainTabView()
+        .environment(PantryStore())
 }

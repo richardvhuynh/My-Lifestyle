@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct DiaryView: View {
+    /// Switches the app to the Profile tab (wired from `MainTabView`).
+    var onOpenProfile: () -> Void = {}
+
     // Sample data — replace with entries fetched from your Amplify data API
     @State private var entries: [DiaryEntry] = [
         DiaryEntry(mealType: .breakfast, title: "Egg, Banana, Blueberries, Oatmeal", calories: 434),
@@ -19,13 +22,13 @@ struct DiaryView: View {
         ZStack(alignment: .top) {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
                     AppHeader(
                         title: "My Lifestyle",
                         subtitle: Date().formatted(.dateTime.weekday(.wide).day().month(.wide)),
-                        trailingIcon: "bell",
-                        trailingAction: {}
+                        trailingIcon: "person.crop.circle.fill",
+                        trailingAction: onOpenProfile
                     )
 
                     // Calorie ring + eaten/left summary

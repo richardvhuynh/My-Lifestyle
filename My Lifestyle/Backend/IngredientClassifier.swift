@@ -20,6 +20,12 @@ enum IngredientClassifier {
             return (parsedAmount ?? 1, unit)
         }
         let (unit, fallbackAmount) = category(for: name)
+        // For an inferred weight item, a bare number is a piece count ("4 bacon"
+        // = 4 rashers, not 4 g) that can't be converted reliably — use a
+        // standard portion instead. Counts and spoons keep the parsed number.
+        if unit.dimension == .mass {
+            return (fallbackAmount, unit)
+        }
         return (parsedAmount ?? fallbackAmount, unit)
     }
 

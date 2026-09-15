@@ -12,7 +12,7 @@ struct CommunityView: View {
         ZStack(alignment: .top) {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 16) {
                     AppHeader(
                         title: "Community",
@@ -182,7 +182,7 @@ private struct ComposePostView: View {
         ZStack(alignment: .top) {
             Theme.background.ignoresSafeArea()
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack {
                         Text("Share a dish")

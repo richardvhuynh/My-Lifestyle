@@ -4,12 +4,37 @@ import SwiftUI
 /// instantly instead of re-fetching (which caused the flicker when scrolling
 /// back). Backed further by `URLCache` on disk for instant loads across
 /// launches. `NSCache` is thread-safe.
-final class ImageCache {
+final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
     private let cache = NSCache<NSURL, UIImage>()
 
     func image(for url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
     func insert(_ image: UIImage, for url: URL) { cache.setObject(image, forKey: url as NSURL) }
+
+    /// Downloads and caches a set of image URLs ahead of time (bounded
+    /// concurrency) so they're already in memory + on disk before the user
+    /// scrolls to them. Called once after the recipe catalog loads.
+    func prefetch(_ urls: [URL]) async {
+        let pending = urls.filter { image(for: $0) == nil }
+        let batchSize = 8
+        var start = 0
+        while start < pending.count {
+            let batch = pending[start..<min(start + batchSize, pending.count)]
+            await withTaskGroup(of: Void.self) { group in
+                for url in batch { group.addTask { await self.download(url) } }
+            }
+            start += batchSize
+        }
+    }
+
+    private func download(_ url: URL) async {
+        if image(for: url) != nil { return }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let image = UIImage(data: data) else { return }
+        insert(image, for: url)
+    }
 }
 
 /// A drop-in async image that fills its frame, caching results in memory and on

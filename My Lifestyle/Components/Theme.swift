@@ -1,24 +1,73 @@
 import SwiftUI
 
+extension Color {
+    /// A color that resolves differently in light and dark appearance.
+    static func dynamic(light: Color, dark: Color) -> Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        })
+    }
+}
+
+/// User-selectable appearance, persisted via `@AppStorage("appearance")`.
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    /// The SwiftUI color scheme to force, or nil to follow the system.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
 /// Central design tokens for the app. Everything visual (colors, radii, shadows)
 /// is defined here so the whole UI is hand-built rather than relying on stock
 /// iOS materials / system backgrounds.
 enum Theme {
     // MARK: Palette
-    /// Warm off-white app background.
-    static let background = Color(red: 0.96, green: 0.97, blue: 0.95)
-    /// Card / raised surface color.
-    static let surface = Color.white
-    /// Recessed surface (fields, inline tiles).
-    static let surfaceAlt = Color(red: 0.94, green: 0.95, blue: 0.93)
+    //
+    // Neutral tokens are dynamic so the app supports light and dark mode; brand
+    // and macro accents stay constant across both.
 
-    static let primaryText = Color(red: 0.11, green: 0.14, blue: 0.13)
-    static let secondaryText = Color(red: 0.46, green: 0.49, blue: 0.47)
+    /// Warm off-white app background (near-black in dark mode).
+    static let background = Color.dynamic(
+        light: Color(red: 0.96, green: 0.97, blue: 0.95),
+        dark: Color(red: 0.07, green: 0.08, blue: 0.08))
+    /// Card / raised surface color.
+    static let surface = Color.dynamic(
+        light: .white,
+        dark: Color(red: 0.13, green: 0.14, blue: 0.14))
+    /// Recessed surface (fields, inline tiles).
+    static let surfaceAlt = Color.dynamic(
+        light: Color(red: 0.94, green: 0.95, blue: 0.93),
+        dark: Color(red: 0.19, green: 0.20, blue: 0.20))
+
+    static let primaryText = Color.dynamic(
+        light: Color(red: 0.11, green: 0.14, blue: 0.13),
+        dark: Color(red: 0.95, green: 0.96, blue: 0.95))
+    static let secondaryText = Color.dynamic(
+        light: Color(red: 0.46, green: 0.49, blue: 0.47),
+        dark: Color(red: 0.64, green: 0.66, blue: 0.64))
 
     /// Fresh green brand accent.
     static let accent = Color(red: 0.16, green: 0.68, blue: 0.45)
     static let accentDark = Color(red: 0.10, green: 0.55, blue: 0.36)
-    static let accentSoft = Color(red: 0.85, green: 0.94, blue: 0.88)
+    static let accentSoft = Color.dynamic(
+        light: Color(red: 0.85, green: 0.94, blue: 0.88),
+        dark: Color(red: 0.16, green: 0.28, blue: 0.22))
 
     static let carb = Color(red: 0.96, green: 0.62, blue: 0.24)
     static let protein = Color(red: 0.93, green: 0.36, blue: 0.55)
@@ -28,7 +77,9 @@ enum Theme {
     // MARK: Metrics
     static let cardRadius: CGFloat = 22
     static let fieldRadius: CGFloat = 14
-    static let shadow = Color.black.opacity(0.06)
+    static let shadow = Color.dynamic(
+        light: Color.black.opacity(0.06),
+        dark: Color.black.opacity(0.4))
 
     /// Signature accent gradient used on primary actions and rings.
     static var accentGradient: LinearGradient {
@@ -162,6 +213,8 @@ struct RoundedFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .font(.system(size: 16))
+            .foregroundStyle(Theme.primaryText)
+            .tint(Theme.accent)
             .padding(.horizontal, 14)
             .padding(.vertical, 13)
             .background(
