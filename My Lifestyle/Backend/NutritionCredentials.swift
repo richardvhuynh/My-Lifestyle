@@ -7,4 +7,8 @@ import Foundation
 /// falls back to `NutritionEstimator`.
 enum NutritionCredentials {
     static let usdaAPIKey = "OgtZH63a8Wnbmm3qNXtxzNxZbaWfvkf7kcKWdYSS"
+
+    /// Spoonacular API key (free tier ~150 points/day). Used ONLY to seed the
+    /// shared cloud catalog once — never per-user — to stay within the quota.
+    static let spoonacularAPIKey = "3f0afcaa6653460294856f401f49fab4"
 }

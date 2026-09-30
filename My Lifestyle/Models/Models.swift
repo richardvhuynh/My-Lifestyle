@@ -14,6 +14,9 @@ struct Recipe: Identifiable, Hashable {
     /// TheMealDB meal id this recipe was imported from, used to de-duplicate
     /// imports. `nil` for hand-authored recipes.
     var sourceId: String?
+    /// Servings the recipe yields (from the source). Nutrition below is the
+    /// total for the whole recipe; per-serving = total / servings.
+    var servings: Int
     var ingredients: [RecipeIngredient]
     var steps: [RecipeStep]
     var calories: Int
@@ -21,7 +24,7 @@ struct Recipe: Identifiable, Hashable {
     var carbs: Double
     var fat: Double
 
-    init(id: UUID = UUID(), cloudId: String? = nil, name: String, imageName: String? = nil, category: String? = nil, area: String? = nil, sourceId: String? = nil, ingredients: [RecipeIngredient], steps: [RecipeStep], calories: Int, protein: Double, carbs: Double, fat: Double) {
+    init(id: UUID = UUID(), cloudId: String? = nil, name: String, imageName: String? = nil, category: String? = nil, area: String? = nil, sourceId: String? = nil, servings: Int = 1, ingredients: [RecipeIngredient], steps: [RecipeStep], calories: Int, protein: Double, carbs: Double, fat: Double) {
         self.id = id
         self.cloudId = cloudId
         self.name = name
@@ -29,6 +32,7 @@ struct Recipe: Identifiable, Hashable {
         self.category = category
         self.area = area
         self.sourceId = sourceId
+        self.servings = servings
         self.ingredients = ingredients
         self.steps = steps
         self.calories = calories

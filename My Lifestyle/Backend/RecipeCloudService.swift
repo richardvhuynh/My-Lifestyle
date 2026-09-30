@@ -19,24 +19,24 @@ enum RecipeCloudService {
         return recipes
     }
 
-    /// Imports recipes from TheMealDB into the shared catalog, skipping any
-    /// already present (matched by `sourceId`, then by name). Returns the count
-    /// of newly added recipes.
+    /// Seeds the shared catalog from Spoonacular, skipping any already present
+    /// (matched by `sourceId`, then by name). Returns the count of newly added
+    /// recipes. Spoonacular's free tier is limited, so this should only run when
+    /// the catalog is empty — it's a one-time populate, not per-user.
     @discardableResult
-    static func seedFromTheMealDB() async throws -> Int {
+    static func seedCatalog() async throws -> Int {
         let existing = try await list()
         let existingSourceIds = Set(existing.compactMap { $0.sourceId })
         let existingNames = Set(existing.map { $0.name.lowercased() })
 
-        let fetched = await RecipeService.fetchRecipes()
+        let fetched = await SpoonacularService.fetchRecipes()
         let newRecipes = fetched.filter { recipe in
             if let sourceId = recipe.sourceId, existingSourceIds.contains(sourceId) { return false }
             return !existingNames.contains(recipe.name.lowercased())
         }
 
-        // Seeding stores recipe details only (name, image, ingredients, steps) —
-        // no nutrition. Nutrition is looked up from USDA lazily the first time a
-        // recipe is opened and persisted then, spreading API calls over time.
+        // Spoonacular provides full structured data (amounts, units, steps,
+        // servings, per-serving nutrition), so records are stored complete.
         // A single failed create shouldn't abort the whole import.
         var created = 0
         for recipe in newRecipes {
@@ -105,6 +105,7 @@ enum RecipeCloudService {
     imageUrl
     category
     area
+    servings
     calories
     protein
     carbs
@@ -171,6 +172,7 @@ private struct RecipeRecord: Decodable {
     var imageUrl: String?
     var category: String?
     var area: String?
+    var servings: Int?
     var calories: Int?
     var protein: Double?
     var carbs: Double?
@@ -188,6 +190,7 @@ private struct RecipeRecord: Decodable {
             category: category,
             area: area,
             sourceId: sourceId,
+            servings: max(1, servings ?? 1),
             ingredients: decodeJSON([RecipeIngredient].self, from: ingredients) ?? [],
             steps: decodeJSON([RecipeStep].self, from: steps) ?? [],
             calories: calories ?? 0,
@@ -211,6 +214,7 @@ private extension Recipe {
         input["imageUrl"] = imageName
         input["category"] = category
         input["area"] = area
+        input["servings"] = servings
         input["sourceId"] = sourceId
         input["ingredients"] = encodeJSON(ingredients)
         input["steps"] = encodeJSON(steps)

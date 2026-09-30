@@ -14,24 +14,26 @@ const schema = a.schema({
     .authorization((allow) => [allow.guest()]),
 
   // A shared, global recipe in the exploration catalog. Every user reads the
-  // same records; imports from TheMealDB seed this table. `ingredients` and
+  // same records; the catalog is seeded from Spoonacular. `ingredients` and
   // `steps` are stored as JSON-encoded strings so the client can round-trip
   // its structured Swift models without a nested GraphQL selection set.
   Recipe: a
     .model({
       name: a.string().required(),
       imageUrl: a.string(),
-      // Browse axes from TheMealDB: food category (e.g. "Seafood") and
-      // cuisine/area (e.g. "Italian").
+      // Browse axes: food category (e.g. "Main course") and cuisine/area.
       category: a.string(),
       area: a.string(),
+      // Number of servings the recipe yields (from the source). Nutrition
+      // fields below are totals for the whole recipe.
+      servings: a.integer(),
       calories: a.integer(),
       protein: a.float(),
       carbs: a.float(),
       fat: a.float(),
       ingredients: a.string(),
       steps: a.string(),
-      // TheMealDB meal id, used to de-duplicate imports.
+      // Source recipe id (e.g. "spoonacular-12345"), used to de-duplicate.
       sourceId: a.string(),
     })
     .authorization((allow) => [allow.guest()]),

@@ -55,17 +55,7 @@ struct RecipesView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-                        AppHeader(
-                            title: "Explore",
-                            subtitle: subtitle,
-                            trailingIcon: isImporting ? nil : "square.and.arrow.down",
-                            trailingAction: { Task { await importRecipes() } }
-                        )
-                        .overlay(alignment: .trailing) {
-                            if isImporting {
-                                ProgressView().padding(.trailing, 16)
-                            }
-                        }
+                        AppHeader(title: "Explore", subtitle: subtitle)
 
                         SearchField(text: $searchText, prompt: "Search recipes")
                             .padding(.horizontal, 16)
@@ -188,7 +178,7 @@ struct RecipesView: View {
             var fetched = try await RecipeCloudService.list()
             if fetched.isEmpty {
                 isImporting = true
-                _ = try await RecipeCloudService.seedFromTheMealDB()
+                _ = try await RecipeCloudService.seedCatalog()
                 fetched = try await RecipeCloudService.list()
                 isImporting = false
             }
@@ -218,7 +208,7 @@ struct RecipesView: View {
         isImporting = true
         errorMessage = nil
         do {
-            _ = try await RecipeCloudService.seedFromTheMealDB()
+            _ = try await RecipeCloudService.seedCatalog()
             recipes = try await RecipeCloudService.list()
         } catch {
             errorMessage = "Import failed. Check your connection and try again."
@@ -345,19 +335,22 @@ struct RecipeDetailView: View {
     /// Called when nutrition is lazily fetched, so the grid can update its copy.
     private let onUpdate: (Recipe) -> Void
     @Environment(\.dismiss) private var dismiss
+    /// Shared pantry, so ingredients can be highlighted by what the user has.
+    @Environment(PantryStore.self) private var pantry
     @State private var isCooking = false
     /// TheMealDB gives no yield, so we estimate it from the recipe's total
     /// ingredient weight (see `NutritionEstimator.estimatedServings`). The user
     /// can still adjust to scale ingredients.
     private let baseServings: Int
-    @State private var servings: Int
 
     init(recipe: Recipe, onUpdate: @escaping (Recipe) -> Void = { _ in }) {
         _recipe = State(initialValue: recipe)
         self.onUpdate = onUpdate
-        let estimated = NutritionEstimator.estimatedServings(for: recipe.ingredients)
-        self.baseServings = estimated
-        _servings = State(initialValue: estimated)
+        // Prefer the real serving count from the source; fall back to a
+        // weight-based estimate only if it's missing.
+        self.baseServings = recipe.servings > 0
+            ? recipe.servings
+            : NutritionEstimator.estimatedServings(for: recipe.ingredients)
     }
 
     /// Nutrition for a single serving (stored total ÷ base servings).
@@ -372,9 +365,6 @@ struct RecipeDetailView: View {
             fat: r1(total.fat)
         )
     }
-
-    /// Multiplier applied to ingredient amounts for the chosen servings.
-    private var scale: Double { Double(servings) / Double(baseServings) }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -437,33 +427,16 @@ struct RecipeDetailView: View {
         .padding(.vertical, 10)
     }
 
-    /// Stepper that scales the recipe up or down by number of servings.
-    private var servingsControl: some View {
-        HStack {
-            Text("Servings")
+    /// Read-only serving size for the recipe.
+    private var servingsRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.accent)
+            Text(baseServings == 1 ? "1 serving" : "\(baseServings) servings")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Theme.primaryText)
             Spacer()
-            HStack(spacing: 18) {
-                Button { if servings > 1 { servings -= 1 } } label: {
-                    Image(systemName: "minus.circle.fill")
-                }
-                .buttonStyle(.plain)
-                .disabled(servings <= 1)
-
-                Text("\(servings)")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Theme.primaryText)
-                    .frame(minWidth: 22)
-
-                Button { if servings < 20 { servings += 1 } } label: {
-                    Image(systemName: "plus.circle.fill")
-                }
-                .buttonStyle(.plain)
-                .disabled(servings >= 20)
-            }
-            .font(.system(size: 22))
-            .foregroundStyle(Theme.accent)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -492,7 +465,7 @@ struct RecipeDetailView: View {
                 macroChip("Fat", "\(Int(perServing.fat))g", Theme.fat)
             }
 
-            servingsControl
+            servingsRow
 
             Button { isCooking = true } label: {
                 Label("Start Recipe", systemImage: "play.fill")
@@ -501,18 +474,12 @@ struct RecipeDetailView: View {
             .disabled(recipe.steps.isEmpty && recipe.ingredients.isEmpty)
 
             SectionBox(title: "Ingredients") {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             ForEach(recipe.ingredients) { ingredient in
-                                HStack(spacing: 10) {
-                                    Circle().fill(Theme.accent).frame(width: 6, height: 6)
-                                    Text(ingredient.name)
-                                        .font(.system(size: 15))
-                                        .foregroundStyle(Theme.primaryText)
-                                    Spacer()
-                                    Text(ingredient.unit.formatted(ingredient.amount * scale))
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(Theme.secondaryText)
-                                }
+                                IngredientRow(
+                                    ingredient: ingredient,
+                                    availability: pantry.availability(for: ingredient)
+                                )
                             }
                         }
                     }
@@ -567,6 +534,60 @@ struct RecipeDetailView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(color.opacity(0.12))
         )
+    }
+}
+
+/// A single ingredient line in the recipe detail, annotated with what the
+/// pantry already covers: a check when the user has enough, or a "have X / need
+/// Y" callout when they're short. Ingredients the pantry doesn't have keep the
+/// plain look.
+private struct IngredientRow: View {
+    let ingredient: RecipeIngredient
+    let availability: IngredientAvailability
+
+    var body: some View {
+        HStack(spacing: 10) {
+            marker
+            Text(ingredient.name)
+                .font(.system(size: 15, weight: availability.isSatisfied ? .semibold : .regular))
+                .foregroundStyle(Theme.primaryText)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(ingredient.amountText)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.secondaryText)
+                if case let .insufficient(have, _, unit) = availability {
+                    Text("have \(unit.formatted(have))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.carb)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(availability.isSatisfied ? Theme.accent.opacity(0.10) : Color.clear)
+        )
+    }
+
+    /// Leading status indicator: filled check when covered, warning triangle
+    /// when short, and the original small dot when the pantry lacks the item.
+    @ViewBuilder
+    private var marker: some View {
+        switch availability {
+        case .staple, .sufficient:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 15))
+                .foregroundStyle(Theme.accent)
+        case .insufficient:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.carb)
+        case .missing:
+            Circle().fill(Theme.accent).frame(width: 6, height: 6)
+                .padding(.horizontal, 4.5)
+        }
     }
 }
 

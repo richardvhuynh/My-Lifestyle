@@ -55,6 +55,71 @@ enum SpoonacularService {
         default: return .whole
         }
     }
+
+    /// Herbs and seasonings should read as spoons, not a "whole" count.
+    private static let seasonings = ["salt", "pepper", "parsley", "thyme", "cilantro",
+        "coriander", "basil", "oregano", "rosemary", "mint", "dill", "chive",
+        "sage", "tarragon", "marjoram"]
+
+    /// Produce peppers (bell/chili/etc.) are counted vegetables, not the
+    /// "pepper" seasoning — keep them as-is.
+    private static let producePeppers = ["bell pepper", "red pepper", "green pepper",
+        "yellow pepper", "orange pepper", "sweet pepper", "jalapeno", "capsicum",
+        "poblano", "serrano", "habanero"]
+
+    static func normalizeSeasoningUnit(name: String, unit: MeasurementUnit) -> MeasurementUnit {
+        let n = name.lowercased()
+        if producePeppers.contains(where: { n.contains($0) }) { return unit }
+        guard unit == .whole else { return unit }
+        return seasonings.contains { n.contains($0) } ? .tablespoons : unit
+    }
+
+    /// Imperative verbs that open a cooking instruction. Spoonacular's
+    /// ingredient parser sometimes mistakes a step sentence for an ingredient
+    /// (e.g. "Add the peppers", "Reduce the heat a little"); such entries begin
+    /// with one of these and are dropped by `isPlausibleIngredientName`.
+    private static let instructionVerbs: Set<String> = [
+        "add", "heat", "reduce", "cook", "stir", "season", "serve", "mix",
+        "place", "remove", "bring", "simmer", "saute", "sauté", "bake", "pour",
+        "combine", "whisk", "beat", "fold", "drain", "cut", "chop", "slice",
+        "dice", "mince", "preheat", "transfer", "cover", "let", "set", "spread",
+        "sprinkle", "garnish", "roll", "knead", "boil", "roast", "grill", "fry",
+        "blend", "mash", "peel", "grate", "melt", "arrange", "divide", "repeat",
+        "continue", "allow", "discard", "reserve", "rinse", "wash", "soak",
+        "marinate", "whip", "turn", "flip", "top", "layer", "drizzle", "brush",
+        "dust", "taste", "adjust", "refrigerate", "chill", "freeze", "warm",
+        "reheat", "can", "make", "prepare", "wipe"
+    ]
+
+    /// True when a parsed name reads like a real ingredient rather than a stray
+    /// instruction fragment. Real ingredient names are short noun phrases with
+    /// no sentence punctuation and don't open with an imperative cooking verb.
+    static func isPlausibleIngredientName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        if trimmed.contains(".") || trimmed.contains("!") { return false }
+        let words = trimmed.split(separator: " ")
+        if words.count > 5 { return false }
+        if let first = words.first, instructionVerbs.contains(first.lowercased()) {
+            return false
+        }
+        return true
+    }
+
+    /// Strips HTML tags/entities (e.g. "&nbsp;") that Spoonacular leaves in text
+    /// and collapses whitespace.
+    static func clean(_ s: String) -> String {
+        var t = s.replacingOccurrences(of: "&nbsp;", with: " ", options: .caseInsensitive)
+        t = t.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        let entities = ["&amp;": "&", "&lt;": "<", "&gt;": ">", "&#39;": "'",
+                        "&rsquo;": "'", "&apos;": "'", "&quot;": "\"",
+                        "&ldquo;": "\"", "&rdquo;": "\"", "&deg;": "°"]
+        for (key, value) in entities {
+            t = t.replacingOccurrences(of: key, with: value, options: .caseInsensitive)
+        }
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
 
 // MARK: - Spoonacular payload
@@ -75,7 +140,7 @@ private struct SpoonRecipe: Decodable {
     let nutrition: SpoonNutrition?
 
     func toRecipe() -> Recipe? {
-        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = SpoonacularService.clean(title)
         guard !title.isEmpty else { return nil }
         let servingCount = max(1, servings ?? 1)
         let factor = Double(servingCount)
@@ -91,7 +156,7 @@ private struct SpoonRecipe: Decodable {
         var steps: [RecipeStep] = []
         for group in analyzedInstructions ?? [] {
             for step in group.steps ?? [] {
-                let text = (step.step ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let text = SpoonacularService.clean(step.step ?? "")
                 guard !text.isEmpty else { continue }
                 steps.append(RecipeStep(order: steps.count + 1, instruction: text))
             }
@@ -121,10 +186,13 @@ private struct SpoonIngredient: Decodable {
     let unit: String?
 
     func toIngredient() -> RecipeIngredient? {
-        let raw = (nameClean ?? name)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !raw.isEmpty else { return nil }
+        let raw = SpoonacularService.clean(nameClean ?? name ?? "")
+        guard !raw.isEmpty, SpoonacularService.isPlausibleIngredientName(raw) else { return nil }
         let quantity = (amount ?? 0) > 0 ? amount! : 1
-        return RecipeIngredient(name: raw.capitalized, amount: quantity, unit: SpoonacularService.mapUnit(unit ?? ""))
+        let unit = SpoonacularService.normalizeSeasoningUnit(
+            name: raw, unit: SpoonacularService.mapUnit(unit ?? "")
+        )
+        return RecipeIngredient(name: raw.capitalized, amount: quantity, unit: unit)
     }
 }
 
