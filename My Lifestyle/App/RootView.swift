@@ -8,23 +8,59 @@ struct RootView: View {
     @Environment(SessionModel.self) private var session
     @AppStorage("appearance") private var appearanceRaw = AppAppearance.system.rawValue
 
+    /// Drives the splash overlay: it stays up until the session is resolved AND a
+    /// minimum display time has passed, then fades away.
+    @State private var splashVisible = true
+    @State private var minimumTimeElapsed = false
+
     private var appearance: AppAppearance {
         AppAppearance(rawValue: appearanceRaw) ?? .system
     }
 
+    /// True once the launch auth check has produced a definite state.
+    private var sessionResolved: Bool {
+        if case .unknown = session.state { return false }
+        return true
+    }
+
     var body: some View {
-        Group {
-            switch session.state {
-            case .signedIn:
-                MainTabView()
-            case .unknown:
-                splash
-            case .signedOut, .confirming:
-                AuthView(session: session, isModal: false)
+        ZStack {
+            Group {
+                switch session.state {
+                case .signedIn:
+                    MainTabView()
+                case .signedOut, .confirming:
+                    AuthView(session: session, isModal: false)
+                case .unknown:
+                    // Covered by the splash until the session resolves.
+                    AuthBackground()
+                }
             }
+
+            // Kept mounted and faded via opacity so the dismissal is a smooth
+            // animation rather than an abrupt removal.
+            splash
+                .opacity(splashVisible ? 1 : 0)
+                .allowsHitTesting(splashVisible)
         }
         .preferredColorScheme(appearance.colorScheme)
         .task { await session.refresh() }
+        .task {
+            // Guarantee the brand splash is shown for at least two seconds.
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            minimumTimeElapsed = true
+            updateSplashVisibility()
+        }
+        .onChange(of: session.state) { updateSplashVisibility() }
+    }
+
+    /// Fades the splash out once the session is known and the minimum time has
+    /// elapsed, so it never flashes away abruptly on a fast launch.
+    private func updateSplashVisibility() {
+        guard splashVisible, sessionResolved, minimumTimeElapsed else { return }
+        withAnimation(.easeInOut(duration: 0.8)) {
+            splashVisible = false
+        }
     }
 
     /// Brief branded loading state while the existing session is resolved on launch —

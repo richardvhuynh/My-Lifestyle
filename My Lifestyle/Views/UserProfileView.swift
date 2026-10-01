@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A look at another member's fitness: their seven-day step chart and ranged
 /// activity graph. Fitness is **friends-only** — the server only returns a member's
@@ -10,6 +11,9 @@ struct UserProfileView: View {
     /// The member's owner-identity, used to fetch their profile and to grant/record
     /// friendship. Nil for sample authors with no real account.
     let userId: String?
+    /// The member's avatar photo, supplied for the current user's own profile
+    /// (avatars aren't synced across members, so this is nil for others).
+    var avatarImageData: Data? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -172,14 +176,22 @@ struct UserProfileView: View {
                 .buttonStyle(.plain)
             }
 
-            Circle()
-                .fill(Theme.accentSoft)
-                .frame(width: 76, height: 76)
-                .overlay(
-                    Text(initials(for: memberName))
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(Theme.accentDark)
-                )
+            if let avatarImageData, let uiImage = UIImage(data: avatarImageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 76, height: 76)
+                    .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Theme.accentSoft)
+                    .frame(width: 76, height: 76)
+                    .overlay(
+                        Text(initials(for: memberName))
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(Theme.accentDark)
+                    )
+            }
 
             VStack(spacing: 3) {
                 Text(memberName)

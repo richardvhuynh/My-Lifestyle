@@ -204,7 +204,7 @@ struct FitnessView: View {
             )
             StatTile(
                 icon: "location.fill",
-                tint: AppTab.pantry.selectedColor,
+                tint: Color(red: 0.28, green: 0.52, blue: 1.0),
                 value: distanceString,
                 unit: "km",
                 label: "Distance"

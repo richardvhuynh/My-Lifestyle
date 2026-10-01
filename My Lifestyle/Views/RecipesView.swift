@@ -41,6 +41,7 @@ struct RecipesView: View {
     @State private var myRecipes: [Recipe] = []
     @State private var isLoadingMine = false
     @State private var showingCompose = false
+    @State private var showingPantry = false
     @State private var myError: String?
 
     /// Distinct values for the active axis, sorted, used as filter chips.
@@ -71,7 +72,9 @@ struct RecipesView: View {
                             title: "Recipes",
                             subtitle: subtitle,
                             trailingIcon: recipeTab == .mine ? "plus" : nil,
-                            trailingAction: recipeTab == .mine ? { showingCompose = true } : nil
+                            trailingAction: recipeTab == .mine ? { showingCompose = true } : nil,
+                            secondaryTrailingIcon: "cabinet.fill",
+                            secondaryTrailingAction: { showingPantry = true }
                         )
 
                         Picker("Recipes", selection: $recipeTab) {
@@ -109,6 +112,9 @@ struct RecipesView: View {
             }
             .sheet(isPresented: $showingCompose) {
                 RecipeComposeView { newRecipe in createMyRecipe(newRecipe) }
+            }
+            .sheet(isPresented: $showingPantry) {
+                PantryView()
             }
             .task {
                 await load()

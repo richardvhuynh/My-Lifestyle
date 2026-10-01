@@ -259,6 +259,9 @@ struct CommunityPost: Identifiable, Hashable {
     var imageData: Data?
     var likeCount: Int
     var isLiked: Bool
+    /// Number of comments on the post. Derived from `CommunityComment` records at
+    /// load time, not stored on the post itself.
+    var commentCount: Int
     var date: Date
 
     init(
@@ -271,6 +274,7 @@ struct CommunityPost: Identifiable, Hashable {
         imageData: Data? = nil,
         likeCount: Int = 0,
         isLiked: Bool = false,
+        commentCount: Int = 0,
         date: Date = Date()
     ) {
         self.id = id
@@ -282,6 +286,20 @@ struct CommunityPost: Identifiable, Hashable {
         self.imageData = imageData
         self.likeCount = likeCount
         self.isLiked = isLiked
+        self.commentCount = commentCount
         self.date = date
     }
+}
+
+/// A comment on a `CommunityPost`, stored in the cloud (`CommunityComment`).
+struct CommunityComment: Identifiable, Hashable {
+    /// The cloud record id (AppSync/DynamoDB).
+    let id: String
+    var postId: String
+    var author: String
+    /// Stable owner-identity of the commenter (`sub::username`); used to let the
+    /// author delete their own comment. `nil` for legacy/guest comments.
+    var authorId: String?
+    var text: String
+    var date: Date
 }

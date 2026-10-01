@@ -232,6 +232,10 @@ struct AppHeader: View {
     var subtitle: String?
     var trailingIcon: String?
     var trailingAction: (() -> Void)?
+    /// An optional extra circular button shown to the left of the primary
+    /// trailing button (e.g. the pantry shortcut on the Recipes screen).
+    var secondaryTrailingIcon: String?
+    var secondaryTrailingAction: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .center) {
@@ -246,22 +250,32 @@ struct AppHeader: View {
                 }
             }
             Spacer()
-            if let trailingIcon {
-                Button { trailingAction?() } label: {
-                    Image(systemName: trailingIcon)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Theme.primaryText)
-                        .frame(width: 42, height: 42)
-                        .background(Circle().fill(Theme.surface))
-                        .overlay(Circle().stroke(Color.black.opacity(0.04), lineWidth: 1))
-                        .shadow(color: Theme.shadow, radius: 8, y: 4)
+            HStack(spacing: 10) {
+                if let secondaryTrailingIcon {
+                    trailingButton(icon: secondaryTrailingIcon, action: secondaryTrailingAction)
                 }
-                .buttonStyle(.plain)
+                if let trailingIcon {
+                    trailingButton(icon: trailingIcon, action: trailingAction)
+                }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    /// A circular header action button matching the app's header styling.
+    private func trailingButton(icon: String, action: (() -> Void)?) -> some View {
+        Button { action?() } label: {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Theme.primaryText)
+                .frame(width: 42, height: 42)
+                .background(Circle().fill(Theme.surface))
+                .overlay(Circle().stroke(Color.black.opacity(0.04), lineWidth: 1))
+                .shadow(color: Theme.shadow, radius: 8, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 }
 

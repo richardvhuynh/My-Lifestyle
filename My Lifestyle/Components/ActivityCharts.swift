@@ -83,28 +83,35 @@ struct ActivityGraphCard: View {
 
     @ViewBuilder
     private var rangedChart: some View {
-        let data = buckets(for: range)
+        let data = segments(for: range)
         if data.isEmpty {
             emptyMessage
         } else {
-            Chart(data) { bucket in
+            let types = typesPresent(in: data)
+            Chart(data) { segment in
+                // Each activity type is its own colored segment, manually positioned
+                // (yStart/yEnd) so the largest sits at the bottom of the stack.
                 BarMark(
-                    x: .value("Date", bucket.date, unit: range.bucket),
-                    y: .value("Steps", bucket.steps)
+                    x: .value("Date", segment.date, unit: range.bucket),
+                    yStart: .value("Steps", segment.yStart),
+                    yEnd: .value("Steps", segment.yEnd),
+                    width: .automatic
                 )
-                .foregroundStyle(bucket.dominantType.color.gradient)
-                .cornerRadius(6)
+                .foregroundStyle(by: .value("Activity", segment.type.label))
+                .cornerRadius(4)
                 .annotation(position: .top, spacing: 4) {
-                    VStack(spacing: 1) {
-                        Image(systemName: bucket.dominantType.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(bucket.dominantType.color)
-                        Text(compactSteps(bucket.steps))
+                    if segment.isTop {
+                        Text(compactSteps(segment.bucketTotal))
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(Theme.secondaryText)
                     }
                 }
             }
+            .chartForegroundStyleScale(
+                domain: types.map(\.label),
+                range: types.map(\.color)
+            )
+            .chartLegend(position: .bottom, spacing: 10)
             .chartXAxis {
                 AxisMarks(values: .stride(by: range.bucket)) { _ in
                     AxisGridLine()
@@ -148,9 +155,11 @@ struct ActivityGraphCard: View {
         return activities.filter { $0.date >= start }.sorted { $0.date > $1.date }
     }
 
-    /// Groups activities in `range` into per-day or per-month buckets, each tagged
-    /// with the sport that contributed the most steps.
-    private func buckets(for range: HistoryRange) -> [ActivityBucket] {
+    /// Groups activities in `range` into per-day or per-month buckets, then splits each
+    /// bucket into one segment per activity type. Segments are stacked largest-first
+    /// (the biggest sits at the bottom) with cumulative `yStart`/`yEnd` offsets so each
+    /// type keeps its own color in the bar.
+    private func segments(for range: HistoryRange) -> [ActivitySegment] {
         let calendar = Calendar.current
         let entries = filtered(range)
         let grouped = Dictionary(grouping: entries) { entry -> Date in
@@ -160,14 +169,36 @@ struct ActivityGraphCard: View {
             }
             return calendar.startOfDay(for: entry.date)
         }
-        return grouped.map { date, items in
-            let total = items.reduce(0) { $0 + $1.steps }
+        var result: [ActivitySegment] = []
+        for (date, items) in grouped {
             let stepsByType = Dictionary(grouping: items, by: \.type)
                 .mapValues { $0.reduce(0) { $0 + $1.steps } }
-            let dominant = stepsByType.max { $0.value < $1.value }?.key ?? .other
-            return ActivityBucket(date: date, steps: total, dominantType: dominant)
+            // Largest first so it anchors the bottom of the stack.
+            let ordered = stepsByType.sorted { $0.value > $1.value }
+            let total = ordered.reduce(0) { $0 + $1.value }
+            var cumulative = 0
+            for (offset, pair) in ordered.enumerated() {
+                let start = cumulative
+                cumulative += pair.value
+                result.append(ActivitySegment(
+                    date: date,
+                    type: pair.key,
+                    steps: pair.value,
+                    yStart: start,
+                    yEnd: cumulative,
+                    isTop: offset == ordered.count - 1,
+                    bucketTotal: total
+                ))
+            }
         }
-        .sorted { $0.date < $1.date }
+        return result.sorted { $0.date < $1.date }
+    }
+
+    /// The distinct activity types present in the data, in the stable enum order, so
+    /// the legend and color scale are consistent across buckets.
+    private func typesPresent(in segments: [ActivitySegment]) -> [ActivityType] {
+        let present = Set(segments.map(\.type))
+        return ActivityType.allCases.filter { present.contains($0) }
     }
 
     private func compactSteps(_ steps: Int) -> String {
@@ -175,12 +206,18 @@ struct ActivityGraphCard: View {
     }
 }
 
-/// One bucket (day or month) of the activity graph.
-struct ActivityBucket: Identifiable {
+/// One colored segment of a stacked activity bar: the steps for a single activity
+/// type within a day/month bucket, with its vertical position in the stack.
+struct ActivitySegment: Identifiable {
     let date: Date
+    let type: ActivityType
     let steps: Int
-    let dominantType: ActivityType
-    var id: Date { date }
+    let yStart: Int
+    let yEnd: Int
+    /// True for the top-most segment, which carries the bucket total annotation.
+    let isTop: Bool
+    let bucketTotal: Int
+    var id: String { "\(date.timeIntervalSince1970)-\(type.rawValue)" }
 }
 
 /// A single logged-activity row. Shows a trash button only when `onDelete` is set.

@@ -1,20 +1,17 @@
 import SwiftUI
 
 struct DiaryView: View {
-    /// Switches the app to the Profile tab (wired from `MainTabView`).
-    var onOpenProfile: () -> Void = {}
-
     // Sample data — replace with entries fetched from your Amplify data API
     @State private var entries: [DiaryEntry] = [
         DiaryEntry(mealType: .breakfast, title: "Egg, Banana, Blueberries, Oatmeal", calories: 434),
         DiaryEntry(mealType: .lunch, title: "Broccoli, Feta Cheese, Chicken, Extra Virgin Olive Oil", calories: 509)
     ]
 
-    // Placeholder daily goals — later pulled from the user's profile
-    private let calorieGoal = 2000
-    private let proteinGoal = 100.0
-    private let carbGoal = 250.0
-    private let fatGoal = 67.0
+    // Daily goals — edited in Profile and shared via the same AppStorage keys.
+    @AppStorage("goalCalories") private var calorieGoal = 2000
+    @AppStorage("goalProtein") private var proteinGoal = 100.0
+    @AppStorage("goalCarbs") private var carbGoal = 250.0
+    @AppStorage("goalFat") private var fatGoal = 67.0
 
     private var eaten: Int { entries.reduce(0) { $0 + $1.calories } }
 
@@ -26,9 +23,7 @@ struct DiaryView: View {
                 VStack(spacing: 20) {
                     AppHeader(
                         title: "My Lifestyle",
-                        subtitle: Date().formatted(.dateTime.weekday(.wide).day().month(.wide)),
-                        trailingIcon: "person.crop.circle.fill",
-                        trailingAction: onOpenProfile
+                        subtitle: Date().formatted(.dateTime.weekday(.wide).day().month(.wide))
                     )
 
                     // Calorie ring + eaten/left summary

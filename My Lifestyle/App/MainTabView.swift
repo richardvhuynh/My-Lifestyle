@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab: AppTab = .diary
-    @State private var showingProfile = false
     @State private var recipesPath = NavigationPath()
     @AppStorage("appearance") private var appearanceRaw = AppAppearance.system.rawValue
 
@@ -16,8 +15,21 @@ struct MainTabView: View {
         Binding(
             get: { selectedTab },
             set: { newValue in
-                recipesPath = NavigationPath()
-                selectedTab = newValue
+                // Only pop Recipes to its root when RE-TAPPING the Recipes tab while it's
+                // already showing (a normal, expected pop on a visible page). When
+                // *leaving* Recipes we must NOT touch its stack: popping a detail that's
+                // still mounted makes the recipe list render for a frame — the flash.
+                // Switching the tab is instant (no animation) so there's no cross-fade dip.
+                let isReTapOnRecipes = newValue == .recipes && selectedTab == .recipes
+
+                var noAnimation = Transaction()
+                noAnimation.disablesAnimations = true
+                withTransaction(noAnimation) {
+                    if isReTapOnRecipes {
+                        recipesPath = NavigationPath()
+                    }
+                    selectedTab = newValue
+                }
             }
         )
     }
@@ -32,23 +44,18 @@ struct MainTabView: View {
             // which made them snap in; animating a persistent view's opacity fades
             // every page smoothly and also preserves each tab's state.
             ZStack {
-                page(.diary) { DiaryView(onOpenProfile: { showingProfile = true }) }
+                page(.diary) { DiaryView() }
                 page(.recipes) { RecipesView(path: $recipesPath) }
-                page(.pantry) { PantryView() }
-                page(.fitness) { FitnessView() }
                 page(.community) { CommunityView() }
+                page(.fitness) { FitnessView() }
+                page(.profile) { ProfileView() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.easeInOut(duration: 0.28), value: selectedTab)
 
             CustomTabBar(selectedTab: tabSelection)
         }
         .ignoresSafeArea(.keyboard)
         .preferredColorScheme(appearance.colorScheme)
-        // Profile is reached from the Diary header now that its tab slot is Community.
-        .sheet(isPresented: $showingProfile) {
-            ProfileView()
-        }
     }
 
     /// Wraps a page so only the selected one is visible and interactive.

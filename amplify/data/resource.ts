@@ -101,10 +101,30 @@ const schema = a.schema({
   CommunityLike: a
     .model({
       postId: a.string().required(),
+      // The liker's stable owner-identity (`sub::username`), stamped by the client
+      // so "has the current user liked this?" is a reliable match independent of the
+      // implicit owner claim's format.
+      userId: a.string(),
     })
     .authorization((allow) => [
       allow.owner(),
       allow.authenticated().to(['read']),
+    ]),
+
+  // A comment by one user on one post. Any signed-in user can read the thread and
+  // add a comment; only the comment's author can edit or delete their own. Reads
+  // are open so every member sees the full discussion under a post.
+  CommunityComment: a
+    .model({
+      postId: a.string().required(),
+      author: a.string().required(),
+      authorId: a.string(),
+      text: a.string().required(),
+      createdAtEpoch: a.float(),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create']),
+      allow.owner(),
     ]),
 
   // A directional friend edge created by its author (`fromId` is the owner, so
