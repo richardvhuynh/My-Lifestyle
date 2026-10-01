@@ -382,6 +382,10 @@
 				DEVELOPMENT_TEAM = MGG69T24H6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Info.plist";
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "My Lifestyle reads past 7 days of step count and activity data from Health to show your daily fitness progress.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "My Lifestyle reads your step count and activity data from Health to show your daily fitness progress.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "My Lifestyle wants to show your daily progress compared to previous days";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -416,6 +420,10 @@
 				DEVELOPMENT_TEAM = MGG69T24H6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Info.plist";
+				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "My Lifestyle reads past 7 days of step count and activity data from Health to show your daily fitness progress.";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "My Lifestyle reads your step count and activity data from Health to show your daily fitness progress.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "My Lifestyle wants to show your daily progress compared to previous days";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

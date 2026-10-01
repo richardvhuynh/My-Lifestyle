@@ -35,6 +35,7 @@ struct MainTabView: View {
                 page(.diary) { DiaryView(onOpenProfile: { showingProfile = true }) }
                 page(.recipes) { RecipesView(path: $recipesPath) }
                 page(.pantry) { PantryView() }
+                page(.fitness) { FitnessView() }
                 page(.community) { CommunityView() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

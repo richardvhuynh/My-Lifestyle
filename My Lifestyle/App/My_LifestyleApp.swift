@@ -8,6 +8,9 @@ struct My_LifestyleApp: App {
     /// Shared pantry, created once and injected so every tab and the recipe
     /// cooking flow operate on the same items.
     @State private var pantry = PantryStore()
+    /// Shared auth session, injected so the root gate and Profile screen agree on
+    /// sign-in state (e.g. signing out from Profile returns to the login screen).
+    @State private var session = SessionModel()
 
     init() {
         // Roomy on-disk + in-memory HTTP cache so recipe images load instantly
@@ -19,8 +22,9 @@ struct My_LifestyleApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            RootView()
                 .environment(pantry)
+                .environment(session)
         }
     }
 

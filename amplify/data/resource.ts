@@ -1,31 +1,34 @@
 import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any unauthenticated user can "create", "read", "update", 
-and "delete" any "Todo" records.
+/*== Data model & authorization ===========================================
+Authorization is enforced server-side per model so a signed-in user can only
+touch their own data. The API runs in `userPool` mode (every caller is an
+authenticated Cognito user — the app is sign-in gated), which is what makes
+owner-based rules possible.
+
+Identity: owner-based rules compare against Cognito's default owner claim
+(`sub::username`). The client constructs the same string for cross-user
+references (post authorId, friendship ids, fitness `viewers`) so the values
+match what `ownersDefinedIn` checks. See `IdentityService` on the Swift side.
 =========================================================================*/
 const schema = a.schema({
+  // Private to each user: only the creator can read/write their todos.
   Todo: a
     .model({
       content: a.string(),
     })
-    .authorization((allow) => [allow.guest()]),
+    .authorization((allow) => [allow.owner()]),
 
-  // A shared, global recipe in the exploration catalog. Every user reads the
-  // same records; the catalog is seeded from Spoonacular. `ingredients` and
-  // `steps` are stored as JSON-encoded strings so the client can round-trip
-  // its structured Swift models without a nested GraphQL selection set.
+  // The shared, global Spoonacular catalog. Every signed-in user reads the same
+  // records. `create`/`update` stay open to authenticated users so the one-time
+  // seed and the lazy nutrition back-fill keep working; `delete` is denied so no
+  // user can wipe the shared catalog. `ingredients`/`steps` are JSON strings.
   Recipe: a
     .model({
       name: a.string().required(),
       imageUrl: a.string(),
-      // Browse axes: food category (e.g. "Main course") and cuisine/area.
       category: a.string(),
       area: a.string(),
-      // Number of servings the recipe yields (from the source). Nutrition
-      // fields below are totals for the whole recipe.
       servings: a.integer(),
       calories: a.integer(),
       protein: a.float(),
@@ -33,10 +36,95 @@ const schema = a.schema({
       fat: a.float(),
       ingredients: a.string(),
       steps: a.string(),
-      // Source recipe id (e.g. "spoonacular-12345"), used to de-duplicate.
       sourceId: a.string(),
     })
-    .authorization((allow) => [allow.guest()]),
+    .authorization((allow) => [allow.authenticated().to(['read', 'create', 'update'])]),
+
+  // A recipe a user authored themselves. Private: only its owner can read,
+  // edit, or delete it. Mirrors the catalog's field shape for easy reuse.
+  UserRecipe: a
+    .model({
+      name: a.string().required(),
+      imageUrl: a.string(),
+      category: a.string(),
+      area: a.string(),
+      servings: a.integer(),
+      calories: a.integer(),
+      protein: a.float(),
+      carbs: a.float(),
+      fat: a.float(),
+      ingredients: a.string(),
+      steps: a.string(),
+    })
+    .authorization((allow) => [allow.owner()]),
+
+  // A member's shared fitness data. The owner has full access; everyone else is
+  // denied EXCEPT identities listed in `viewers` (the owner's accepted friends),
+  // who may read. This is the server-enforced "friends-only" gate. `viewers`
+  // holds friend owner-identity strings (`sub::username`).
+  FitnessProfile: a
+    .model({
+      userId: a.string().required(),
+      displayName: a.string(),
+      weeklySteps: a.string(),
+      activities: a.string(),
+      updatedAtEpoch: a.float(),
+      viewers: a.string().array(),
+    })
+    .identifier(['userId'])
+    .authorization((allow) => [
+      allow.owner(),
+      allow.ownersDefinedIn('viewers').to(['read']),
+    ]),
+
+  // A shared Community feed post. Any signed-in user can read the whole feed and
+  // create a post; only the author can edit or delete their own post. Likes are
+  // tracked separately (see CommunityLike) so liking never edits the post.
+  CommunityPost: a
+    .model({
+      author: a.string().required(),
+      authorId: a.string(),
+      recipeName: a.string().required(),
+      caption: a.string(),
+      imageBase64: a.string(),
+      createdAtEpoch: a.float(),
+    })
+    .authorization((allow) => [
+      allow.authenticated().to(['read', 'create']),
+      allow.owner(),
+    ]),
+
+  // One like by one user on one post. The liker owns their like record (create/
+  // delete), so anyone can like any post without being able to modify it. Reads
+  // are open to authenticated users so the feed can total likes and mark which
+  // posts the current user liked.
+  CommunityLike: a
+    .model({
+      postId: a.string().required(),
+    })
+    .authorization((allow) => [
+      allow.owner(),
+      allow.authenticated().to(['read']),
+    ]),
+
+  // A directional friend edge created by its author (`fromId` is the owner, so
+  // each user only ever writes records they own — no cross-user updates). A
+  // friendship is "mutual" when edges exist in both directions and neither is
+  // declined. Authenticated read lets a user discover edges pointing at them
+  // (incoming requests) and detect mutual links. Records hold only identities +
+  // status, never fitness data. `status` is "active" or "declined".
+  Friendship: a
+    .model({
+      fromId: a.string().required(),
+      fromName: a.string(),
+      toUsername: a.string().required(),
+      toId: a.string(),
+      status: a.string().required(),
+    })
+    .authorization((allow) => [
+      allow.ownerDefinedIn('fromId'),
+      allow.authenticated().to(['read']),
+    ]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
@@ -44,35 +132,6 @@ export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({
   schema,
   authorizationModes: {
-    defaultAuthorizationMode: 'identityPool',
+    defaultAuthorizationMode: 'userPool',
   },
 });
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>

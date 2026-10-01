@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProfileView: View {
-    @State private var session = SessionModel()
+    @Environment(SessionModel.self) private var session
     @State private var showingAuth = false
     @AppStorage("appearance") private var appearanceRaw = AppAppearance.system.rawValue
 
@@ -64,6 +64,28 @@ struct ProfileView: View {
                                 RowDivider()
                                 goalRow("Fat goal", "67 g")
                             }
+                        }
+
+                        // Social
+                        SectionBox(title: "Social") {
+                            NavigationLink {
+                                FriendsView()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "person.2.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(Theme.accent)
+                                        .frame(width: 24)
+                                    Text("Friends")
+                                        .font(.system(size: 15))
+                                        .foregroundStyle(Theme.primaryText)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Theme.secondaryText)
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         // Backend
@@ -148,4 +170,5 @@ struct ProfileView: View {
 
 #Preview {
     ProfileView()
+        .environment(SessionModel())
 }

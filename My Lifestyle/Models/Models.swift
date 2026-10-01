@@ -245,7 +245,13 @@ struct DiaryEntry: Identifiable, Hashable {
 /// optional photo, that others can like.
 struct CommunityPost: Identifiable, Hashable {
     let id: UUID
+    /// The cloud record id (AppSync/DynamoDB), used for like updates. `nil` until the
+    /// post has been persisted.
+    var cloudId: String?
     var author: String
+    /// Stable id of the poster (Cognito username/email or guest identity id), used to
+    /// fetch their shared fitness profile. `nil` for posts with no real account.
+    var authorId: String?
     var recipeName: String
     var caption: String
     /// Photo the poster attached (JPEG data). When `nil`, the card shows a
@@ -257,7 +263,9 @@ struct CommunityPost: Identifiable, Hashable {
 
     init(
         id: UUID = UUID(),
+        cloudId: String? = nil,
         author: String,
+        authorId: String? = nil,
         recipeName: String,
         caption: String,
         imageData: Data? = nil,
@@ -266,7 +274,9 @@ struct CommunityPost: Identifiable, Hashable {
         date: Date = Date()
     ) {
         self.id = id
+        self.cloudId = cloudId
         self.author = author
+        self.authorId = authorId
         self.recipeName = recipeName
         self.caption = caption
         self.imageData = imageData

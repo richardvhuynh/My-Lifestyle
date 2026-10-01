@@ -31,6 +31,18 @@ struct RecipesView: View {
     @State private var isImporting = false
     @State private var errorMessage: String?
 
+    /// Browse the shared catalog vs. the user's own private recipes.
+    private enum RecipeTab: String, CaseIterable, Identifiable {
+        case explore = "Explore"
+        case mine = "My Recipes"
+        var id: String { rawValue }
+    }
+    @State private var recipeTab: RecipeTab = .explore
+    @State private var myRecipes: [Recipe] = []
+    @State private var isLoadingMine = false
+    @State private var showingCompose = false
+    @State private var myError: String?
+
     /// Distinct values for the active axis, sorted, used as filter chips.
     private var axisValues: [String] {
         let values = recipes.compactMap { browseAxis.value(of: $0) }
@@ -55,57 +67,147 @@ struct RecipesView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-                        AppHeader(title: "Explore", subtitle: subtitle)
+                        AppHeader(
+                            title: "Recipes",
+                            subtitle: subtitle,
+                            trailingIcon: recipeTab == .mine ? "plus" : nil,
+                            trailingAction: recipeTab == .mine ? { showingCompose = true } : nil
+                        )
 
-                        SearchField(text: $searchText, prompt: "Search recipes")
-                            .padding(.horizontal, 16)
-
-                        if !recipes.isEmpty {
-                            axisPicker
-                            filterChips
-                        }
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.system(size: 13))
-                                .foregroundStyle(Theme.secondaryText)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                        }
-
-                        if isLoading && recipes.isEmpty {
-                            ProgressView("Loading recipes…")
-                                .padding(.top, 40)
-                        } else if recipes.isEmpty {
-                            emptyState
-                        } else {
-                            LazyVGrid(columns: gridColumns, spacing: 16) {
-                                ForEach(filtered) { recipe in
-                                    NavigationLink(value: recipe) {
-                                        RecipeCard(recipe: recipe)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
+                        Picker("Recipes", selection: $recipeTab) {
+                            ForEach(RecipeTab.allCases) { tab in
+                                Text(tab.rawValue).tag(tab)
                             }
-                            .padding(.horizontal, 16)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, 16)
+
+                        if recipeTab == .explore {
+                            exploreContent
+                        } else {
+                            myRecipesContent
                         }
                     }
                     .padding(.bottom, 120)
                 }
-                .refreshable { await load() }
+                .refreshable {
+                    if recipeTab == .explore { await load() } else { await loadMyRecipes() }
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Recipe.self) { recipe in
                 RecipeDetailView(recipe: recipe) { updated in
-                    // Reflect lazily-fetched nutrition back into the grid so it
-                    // isn't looked up again this session.
+                    // Reflect lazily-fetched nutrition back into whichever grid holds
+                    // it so it isn't looked up again this session.
                     if let index = recipes.firstIndex(where: { $0.id == updated.id }) {
                         recipes[index] = updated
                     }
+                    if let index = myRecipes.firstIndex(where: { $0.id == updated.id }) {
+                        myRecipes[index] = updated
+                    }
                 }
             }
-            .task { await load() }
+            .sheet(isPresented: $showingCompose) {
+                RecipeComposeView { newRecipe in createMyRecipe(newRecipe) }
+            }
+            .task {
+                await load()
+                await loadMyRecipes()
+            }
         }
+    }
+
+    /// The shared Spoonacular catalog: search, browse axes, and the grid.
+    @ViewBuilder
+    private var exploreContent: some View {
+        SearchField(text: $searchText, prompt: "Search recipes")
+            .padding(.horizontal, 16)
+
+        if !recipes.isEmpty {
+            axisPicker
+            filterChips
+        }
+
+        if let errorMessage {
+            Text(errorMessage)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+        }
+
+        if isLoading && recipes.isEmpty {
+            ProgressView("Loading recipes…")
+                .padding(.top, 40)
+        } else if recipes.isEmpty {
+            emptyState
+        } else {
+            LazyVGrid(columns: gridColumns, spacing: 16) {
+                ForEach(filtered) { recipe in
+                    NavigationLink(value: recipe) {
+                        RecipeCard(recipe: recipe)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    /// The user's own private recipes, with delete via long-press.
+    @ViewBuilder
+    private var myRecipesContent: some View {
+        if let myError {
+            Text(myError)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+        }
+
+        if isLoadingMine && myRecipes.isEmpty {
+            ProgressView("Loading your recipes…")
+                .padding(.top, 40)
+        } else if myRecipes.isEmpty {
+            myEmptyState
+        } else {
+            LazyVGrid(columns: gridColumns, spacing: 16) {
+                ForEach(myRecipes) { recipe in
+                    NavigationLink(value: recipe) {
+                        RecipeCard(recipe: recipe)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            deleteMyRecipe(recipe)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private var myEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.accentDark)
+            Text("No recipes of your own yet")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Theme.primaryText)
+            Text("Tap + to create a private recipe only you can see.")
+                .font(.system(size: 14))
+                .foregroundStyle(Theme.secondaryText)
+                .multilineTextAlignment(.center)
+            Button("New Recipe") { showingCompose = true }
+                .buttonStyle(PrimaryButtonStyle())
+                .frame(maxWidth: 220)
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
     }
 
     /// Two flexible columns for the exploration grid.
@@ -114,7 +216,10 @@ struct RecipesView: View {
     }
 
     private var subtitle: String {
-        recipes.isEmpty ? "Discover recipes" : "\(recipes.count) recipes"
+        if recipeTab == .mine {
+            return myRecipes.isEmpty ? "Your private recipes" : "\(myRecipes.count) of your recipes"
+        }
+        return recipes.isEmpty ? "Discover recipes" : "\(recipes.count) recipes"
     }
 
     /// Segmented control switching between browsing by category and cuisine.
@@ -214,6 +319,48 @@ struct RecipesView: View {
             errorMessage = "Import failed. Check your connection and try again."
         }
         isImporting = false
+    }
+
+    // MARK: - My recipes
+
+    /// Loads the signed-in user's own private recipes (owner-scoped server-side).
+    private func loadMyRecipes() async {
+        isLoadingMine = true
+        myError = nil
+        do {
+            myRecipes = try await UserRecipeCloudService.list()
+            prefetchImages(for: myRecipes)
+        } catch {
+            myError = "Couldn't load your recipes. Pull to refresh to try again."
+        }
+        isLoadingMine = false
+    }
+
+    /// Persists a newly authored recipe, optimistically inserting it and swapping in
+    /// the saved copy (with its cloud id). Removes it again if the save fails.
+    private func createMyRecipe(_ recipe: Recipe) {
+        myRecipes.insert(recipe, at: 0)
+        Task {
+            do {
+                let saved = try await UserRecipeCloudService.create(recipe)
+                if let index = myRecipes.firstIndex(where: { $0.id == recipe.id }) {
+                    myRecipes[index] = saved
+                }
+            } catch {
+                myRecipes.removeAll { $0.id == recipe.id }
+                myError = "Couldn't save your recipe. Try again."
+            }
+        }
+    }
+
+    /// Deletes one of the user's recipes, optimistically removing it from the grid.
+    private func deleteMyRecipe(_ recipe: Recipe) {
+        guard let cloudId = recipe.cloudId else {
+            myRecipes.removeAll { $0.id == recipe.id }
+            return
+        }
+        myRecipes.removeAll { $0.id == recipe.id }
+        Task { try? await UserRecipeCloudService.delete(cloudId: cloudId) }
     }
 }
 

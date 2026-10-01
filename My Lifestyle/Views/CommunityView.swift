@@ -1,12 +1,28 @@
 import SwiftUI
 import PhotosUI
+import Amplify
 
 /// Community board where members share recipes they've made — with a photo and
-/// caption — and can like each other's posts. Posts are in-memory sample data
-/// for now; wire to the Amplify backend later alongside recipes.
+/// caption — and can like each other's posts. Posts are stored in the cloud
+/// (`CommunityPost` in Amplify) so the feed is shared across all users.
+/// Identifies a member whose profile is being viewed, for `sheet(item:)`.
+private struct MemberRef: Identifiable, Hashable {
+    let name: String
+    let userId: String?
+    var id: String { userId ?? name }
+}
+
 struct CommunityView: View {
-    @State private var posts: [CommunityPost] = CommunityView.samplePosts
+    @State private var posts: [CommunityPost] = []
+    @State private var isLoading = true
+    @State private var loadFailed = false
     @State private var showingComposer = false
+    @State private var selectedMember: MemberRef?
+    @State private var errorMessage: String?
+    /// The signed-in (or guest) user's stable id + display name, resolved on appear
+    /// so their own posts link to their real shared fitness profile.
+    @State private var currentUserId: String?
+    @State private var currentDisplayName = "You"
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -16,26 +32,122 @@ struct CommunityView: View {
                 VStack(spacing: 16) {
                     AppHeader(
                         title: "Community",
-                        subtitle: "\(posts.count) posts",
+                        subtitle: subtitle,
                         trailingIcon: "square.and.pencil",
                         trailingAction: { showingComposer = true }
                     )
 
-                    LazyVStack(spacing: 16) {
-                        ForEach($posts) { $post in
-                            PostCard(post: $post)
+                    if isLoading {
+                        ProgressView()
+                            .padding(.top, 60)
+                    } else if posts.isEmpty {
+                        emptyState
+                    } else {
+                        LazyVStack(spacing: 16) {
+                            ForEach($posts) { $post in
+                                PostCard(post: $post, onOpenProfile: {
+                                    selectedMember = MemberRef(name: post.author, userId: post.authorId)
+                                }, onLikeChanged: { persistLike($0) })
+                            }
                         }
+                        .padding(.horizontal, 16)
                     }
-                    .padding(.horizontal, 16)
                 }
                 .padding(.bottom, 120)
             }
+            .refreshable { await load() }
+        }
+        .task {
+            currentUserId = await FitnessCloudService.currentUserId()
+            if let user = try? await Amplify.Auth.getCurrentUser() {
+                currentDisplayName = user.username
+            }
+            // Ensure each accepted friend can read our fitness profile (both sides
+            // reconcile, so mutual visibility converges once both open the app).
+            try? await FriendshipService.reconcileViewers()
+            await load()
         }
         .sheet(isPresented: $showingComposer) {
             ComposePostView { newPost in
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    posts.insert(newPost, at: 0)
+                var post = newPost
+                post.author = currentDisplayName
+                post.authorId = currentUserId
+                submit(post)
+            }
+        }
+        .sheet(item: $selectedMember) { member in
+            UserProfileView(memberName: member.name, userId: member.userId)
+        }
+        .alert("Post failed", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var subtitle: String {
+        isLoading ? "Loading…" : "\(posts.count) posts"
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: loadFailed ? "wifi.exclamationmark" : "square.on.square.dashed")
+                .font(.system(size: 40))
+                .foregroundStyle(Theme.secondaryText)
+            Text(loadFailed ? "Couldn't load the feed." : "No posts yet — be the first to share a dish!")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
+        .padding(.horizontal, 30)
+    }
+
+    // MARK: - Cloud actions
+
+    private func load() async {
+        loadFailed = false
+        do {
+            posts = try await CommunityCloudService.list()
+        } catch {
+            loadFailed = true
+        }
+        isLoading = false
+    }
+
+    /// Optimistically inserts the post, then creates it in the cloud and swaps in the
+    /// saved copy (with its cloud id). If the save fails, removes it again and surfaces
+    /// the reason rather than letting it vanish silently.
+    private func submit(_ post: CommunityPost) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            posts.insert(post, at: 0)
+        }
+        Task {
+            do {
+                let saved = try await CommunityCloudService.create(post)
+                if let index = posts.firstIndex(where: { $0.id == post.id }) {
+                    posts[index] = saved
                 }
+            } catch {
+                posts.removeAll { $0.id == post.id }
+                errorMessage = "Couldn't post: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    /// Reflects the user's like toggle into the cloud as a per-user like record,
+    /// so liking never edits the post itself.
+    private func persistLike(_ post: CommunityPost) {
+        guard let cloudId = post.cloudId else { return }
+        Task {
+            if post.isLiked {
+                try? await CommunityCloudService.like(postId: cloudId)
+            } else {
+                try? await CommunityCloudService.unlike(postId: cloudId)
             }
         }
     }
@@ -45,29 +157,39 @@ struct CommunityView: View {
 
 private struct PostCard: View {
     @Binding var post: CommunityPost
+    var onOpenProfile: () -> Void
+    var onLikeChanged: (CommunityPost) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Author row
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(Theme.accentSoft)
-                    .frame(width: 40, height: 40)
-                    .overlay(
-                        Text(initials(for: post.author))
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Theme.accentDark)
-                    )
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(post.author)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.primaryText)
-                    Text(post.date.formatted(.relative(presentation: .named)))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.secondaryText)
+            // Author row — tap to view the member's fitness profile.
+            Button {
+                onOpenProfile()
+            } label: {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(Theme.accentSoft)
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            Text(initials(for: post.author))
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.accentDark)
+                        )
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(post.author)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.primaryText)
+                        Text(post.date.formatted(.relative(presentation: .named)))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.secondaryText)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.secondaryText.opacity(0.6))
                 }
-                Spacer()
             }
+            .buttonStyle(.plain)
 
             // Photo
             PostImage(imageData: post.imageData, seed: post.recipeName)
@@ -102,6 +224,7 @@ private struct PostCard: View {
                     post.isLiked.toggle()
                     post.likeCount += post.isLiked ? 1 : -1
                 }
+                onLikeChanged(post)
             } label: {
                 HStack(spacing: 7) {
                     Image(systemName: post.isLiked ? "heart.fill" : "heart")
@@ -266,34 +389,6 @@ private struct ComposePostView: View {
             }
         }
     }
-}
-
-// MARK: - Sample data
-
-private extension CommunityView {
-    static let samplePosts: [CommunityPost] = [
-        CommunityPost(
-            author: "Maya Chen",
-            recipeName: "Chicken & Broccoli Bowl",
-            caption: "First time hitting my protein goal and actually enjoying it. The feta makes it 🔥",
-            likeCount: 42,
-            date: Date().addingTimeInterval(-3600)
-        ),
-        CommunityPost(
-            author: "Diego Ramos",
-            recipeName: "Oatmeal with Berries",
-            caption: "Sunday breakfast reset. Prepped a batch for the whole week.",
-            likeCount: 18,
-            date: Date().addingTimeInterval(-3600 * 6)
-        ),
-        CommunityPost(
-            author: "Priya Patel",
-            recipeName: "Overnight Chia Pudding",
-            caption: "Cleared out the pantry temp items with this one. Zero waste week!",
-            likeCount: 63,
-            date: Date().addingTimeInterval(-3600 * 26)
-        )
-    ]
 }
 
 #Preview {

@@ -1,5 +1,6 @@
 import Foundation
 import Amplify
+import UIKit
 
 /// Observable wrapper around Amplify Auth (Cognito) for a simple
 /// email + password sign-up / confirm / sign-in flow.
@@ -65,6 +66,29 @@ final class SessionModel {
                 self.errorMessage = "Additional step required: \(result.nextStep)"
             }
         }
+    }
+
+    /// Signs in through a hosted web flow for a third-party identity provider
+    /// (Apple / Google). The providers must be configured on the Cognito user pool.
+    func signInWithSocial(_ provider: AuthProvider) async {
+        await perform {
+            let result = try await Amplify.Auth.signInWithWebUI(
+                for: provider,
+                presentationAnchor: Self.presentationAnchor()
+            )
+            if result.isSignedIn {
+                await self.refresh()
+            } else {
+                self.errorMessage = "Additional step required: \(result.nextStep)"
+            }
+        }
+    }
+
+    /// The foreground window to present the hosted sign-in sheet from.
+    private static func presentationAnchor() -> AuthUIPresentationAnchor {
+        let scene = UIApplication.shared.connectedScenes
+            .first { $0.activationState == .foregroundActive } as? UIWindowScene
+        return scene?.keyWindow ?? UIWindow()
     }
 
     func signOut() async {

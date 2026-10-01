@@ -5,6 +5,7 @@ enum AppTab: String, CaseIterable {
     case diary = "Diary"
     case recipes = "Recipes"
     case pantry = "Pantry"
+    case fitness = "Fitness"
     case community = "Community"
 
     var icon: String {
@@ -12,6 +13,7 @@ enum AppTab: String, CaseIterable {
         case .diary: return "book.closed.fill"
         case .recipes: return "fork.knife"
         case .pantry: return "cabinet.fill"
+        case .fitness: return "figure.run"
         case .community: return "person.2.fill"
         }
     }
@@ -22,6 +24,7 @@ enum AppTab: String, CaseIterable {
         case .diary:     return Color(red: 0.15, green: 0.72, blue: 0.54)
         case .recipes:   return Color(red: 1.0,  green: 0.58, blue: 0.12)
         case .pantry:    return Color(red: 0.28, green: 0.52, blue: 1.0)
+        case .fitness:   return Color(red: 0.95, green: 0.30, blue: 0.36)
         case .community: return Color(red: 0.9,  green: 0.3,  blue: 0.72)
         }
     }
